@@ -98,6 +98,7 @@ foreach ($keys as $key => $path) {
     $song = [
         'key' => (string) $key,
         'file' => assetUrl($path),
+        'version' => hash_file('sha256', "$root/$path"),
         'title' => $title,
         'album' => $album,
         'cover' => assetUrl($cover),
