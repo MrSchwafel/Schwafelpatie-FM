@@ -24,7 +24,9 @@ Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. E
 
 In OBS eine **Browserquelle** mit der URL [Schwafelpatie FM OBS](https://mrschwafel.github.io/Schwafelpatie-FM/?player=OBS) und einer Größe von **720 × 200** hinzufügen. **Audio über OBS steuern** macht die Quelle im Audiomixer regelbar. Wenn die Musik beim Szenenwechsel weiterlaufen soll, die Quelle beim Ausblenden aktiv lassen und das Neuladen beim Szenenwechsel deaktivieren.
 
-Über **Interagieren** die Quelle öffnen. Ein Klick auf das Logo startet oder pausiert die Musik. Über das Regler-Symbol die Mediathek öffnen, einen Titel wählen und mit **Overlay anzeigen** zur kompakten Anzeige zurückkehren. Das Overlay spielt selbst ab und zeigt seinen eigenen Titel. Mit `&song=SONG-ID` lässt sich ein Starttitel vorauswählen.
+Die OBS-Quelle startet automatisch mit Shuffle. Mit `&song=SONG-ID` lässt sich der erste Titel festlegen. Mit `&shuffle=0` spielt die Quelle in Katalogreihenfolge.
+
+Über **Interagieren** die Quelle öffnen. Ein Klick auf das Logo startet oder pausiert die Musik. Über das Regler-Symbol die Mediathek öffnen, einen Titel wählen und mit **Overlay anzeigen** zur kompakten Anzeige zurückkehren. Das Overlay zeigt den Titel seiner eigenen Wiedergabe.
 
 Das Logo liegt als skalierbare SVG-Datei unter `assets/logo.svg`.
 

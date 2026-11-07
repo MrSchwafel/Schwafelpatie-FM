@@ -246,7 +246,8 @@ if ('mediaSession' in navigator) {
 
 selectAlbum('all');
 const requestedSong = params.get('song');
-setShuffle(['1', 'true', 'on'].includes(params.get('shuffle')));
+const requestedShuffle = params.get('shuffle');
+setShuffle(requestedShuffle === null ? Boolean(obs) : ['1', 'true', 'on'].includes(requestedShuffle));
 const requestedIndex = allSongs.findIndex((song) => song.key === requestedSong);
 const startIndex = !requestedSong && shuffle ? Math.floor(Math.random() * allSongs.length) : Math.max(0, requestedIndex);
-selectSong(startIndex, !obs, false);
+selectSong(startIndex, true, false);
