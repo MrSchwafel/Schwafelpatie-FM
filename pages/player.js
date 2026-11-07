@@ -1,4 +1,4 @@
-const { albums, albumKeys, allSongs, initialStats, newestSong } =
+const { albums, albumKeys, allSongs, newestSong } =
   JSON.parse(document.getElementById('catalog').textContent);
 
 const albumSelector = document.getElementById('albumSelector');
@@ -6,42 +6,31 @@ const songSelector = document.getElementById('songSelector');
 const player = document.getElementById('player');
 const cover = document.getElementById('cover');
 const metaTitle = document.getElementById('meta-title');
-const timeDisplay = document.getElementById('timeDisplay');
+const metaAlbum = document.getElementById('meta-album');
+const trackCount = document.getElementById('trackCount');
+const elapsed = document.getElementById('elapsed');
+const duration = document.getElementById('duration');
+const progress = document.getElementById('progress');
+const volume = document.getElementById('volumeSlider');
+const playbackStatus = document.getElementById('playbackStatus');
+const playbackLabel = document.getElementById('playbackLabel');
+const playButton = document.getElementById('playBtn');
+const playIcon = document.getElementById('playIcon');
 const shuffleButton = document.getElementById('shuffleBtn');
 const loopButton = document.getElementById('loopBtn');
 const shareButton = document.getElementById('shareButton');
+const shareLabel = document.getElementById('shareLabel');
 
 let playlist = allSongs;
 let currentIndex = 0;
 let shuffle = false;
 const history = [];
-
-function formatStreamingTime(minutes) {
-  let seconds = Math.round(minutes * 60);
-  const units = [
-    [31_536_000, 'Jahr', 'Jahre'],
-    [86_400, 'Tag', 'Tage'],
-    [3_600, 'Std', 'Std'],
-    [60, 'Min', 'Min'],
-    [1, 'Sek', 'Sek'],
-  ];
-  const parts = [];
-  for (const [size, singular, plural] of units) {
-    const count = Math.floor(seconds / size);
-    if (count > 0) parts.push(`${count} ${count === 1 ? singular : plural}`);
-    seconds %= size;
-  }
-  return parts.join(' ') || '0 Min';
-}
-
-function showStats(prefix, stats) {
-  document.getElementById(`${prefix}Streams`).textContent = stats?.streams ?? 0;
-  document.getElementById(`${prefix}Minutes`).textContent = formatStreamingTime(stats?.minutes ?? 0);
-}
+let shareTimer;
 
 function selectAlbum(value) {
   playlist = value === 'all' ? allSongs : albums[albumKeys[Number(value)]];
   albumSelector.value = value;
+  trackCount.textContent = `${playlist.length} ${playlist.length === 1 ? 'Song' : 'Songs'}`;
   songSelector.replaceChildren();
   playlist.forEach((song, index) => {
     const label = value === 'all' ? `${song.album} - ${song.title}` : song.title;
@@ -58,10 +47,12 @@ function selectSong(index, autoplay = true, remember = true) {
   currentIndex = index;
   songSelector.value = index;
   player.src = song.file;
-  cover.style.backgroundImage = `url("${song.cover}")`;
-  metaTitle.textContent = `Titel: ${song.title}`;
+  cover.src = song.cover;
+  metaTitle.textContent = song.title;
+  metaAlbum.textContent = song.album;
   document.title = `${song.title} – Schwafelpatie FM`;
-  showStats('song', initialStats.songs?.[song.key]);
+  updateTime();
+  updatePlaybackState();
 
   if ('mediaSession' in navigator && 'MediaMetadata' in window) {
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -93,7 +84,6 @@ function nextSong() {
 
 function setShuffle(enabled) {
   shuffle = enabled;
-  shuffleButton.classList.toggle('active', enabled);
   shuffleButton.setAttribute('aria-pressed', enabled);
 }
 
@@ -103,7 +93,26 @@ function formatTime(time) {
 }
 
 function updateTime() {
-  timeDisplay.textContent = `${formatTime(player.currentTime)} / ${formatTime(player.duration)}`;
+  const hasDuration = Number.isFinite(player.duration) && player.duration > 0;
+  elapsed.textContent = formatTime(player.currentTime);
+  duration.textContent = formatTime(player.duration);
+  progress.disabled = !hasDuration;
+  progress.max = hasDuration ? player.duration : 1;
+  progress.value = hasDuration ? player.currentTime : 0;
+  progress.style.setProperty('--filled', `${100 * Number(progress.value) / Number(progress.max)}%`);
+  progress.setAttribute('aria-valuetext', `${elapsed.textContent} von ${duration.textContent}`);
+}
+
+function updatePlaybackState() {
+  const playing = !player.paused && !player.ended && !player.error;
+  const label = playing ? 'Pausieren' : 'Abspielen';
+  playButton.setAttribute('aria-label', label);
+  playButton.title = label;
+  playIcon.setAttribute('href', playing ? '#icon-pause' : '#icon-play');
+  playbackStatus.dataset.state = playing ? 'playing' : 'idle';
+  if (player.error) playbackLabel.textContent = 'Song konnte nicht geladen werden';
+  else if (playing) playbackLabel.textContent = 'Wird abgespielt';
+  else playbackLabel.textContent = player.currentTime > 0 ? 'Pausiert' : 'Bereit zur Wiedergabe';
 }
 
 albumSelector.addEventListener('change', () => {
@@ -113,21 +122,28 @@ albumSelector.addEventListener('change', () => {
 songSelector.addEventListener('change', () => selectSong(Number(songSelector.value)));
 document.getElementById('prevBtn').addEventListener('click', previousSong);
 document.getElementById('nextBtn').addEventListener('click', nextSong);
-document.getElementById('playBtn').addEventListener('click', () => {
+playButton.addEventListener('click', () => {
   if (player.paused) play();
   else player.pause();
 });
 loopButton.addEventListener('click', () => {
   player.loop = !player.loop;
-  loopButton.classList.toggle('active', player.loop);
   loopButton.setAttribute('aria-pressed', player.loop);
 });
 shuffleButton.addEventListener('click', () => setShuffle(!shuffle));
-document.getElementById('volumeSlider').addEventListener('input', (event) => {
-  player.volume = Number(event.target.value);
+volume.addEventListener('input', () => {
+  player.volume = Number(volume.value);
 });
-player.addEventListener('loadedmetadata', updateTime);
+player.addEventListener('volumechange', () => {
+  volume.value = player.volume;
+  volume.style.setProperty('--filled', `${100 * player.volume}%`);
+});
+progress.addEventListener('input', () => {
+  if (!progress.disabled) player.currentTime = Number(progress.value);
+});
+player.addEventListener('durationchange', updateTime);
 player.addEventListener('timeupdate', updateTime);
+for (const event of ['play', 'pause', 'error']) player.addEventListener(event, updatePlaybackState);
 player.addEventListener('ended', nextSong);
 
 document.getElementById('newestSongBtn')?.addEventListener('click', () => {
@@ -142,8 +158,9 @@ shareButton.addEventListener('click', async () => {
   url.searchParams.set('song', playlist[currentIndex].key);
   try {
     await navigator.clipboard.writeText(url.href);
-    shareButton.textContent = '✅ Link kopiert!';
-    setTimeout(() => { shareButton.textContent = '🔗 Link kopieren'; }, 1500);
+    clearTimeout(shareTimer);
+    shareLabel.textContent = 'Link kopiert!';
+    shareTimer = setTimeout(() => { shareLabel.textContent = 'Link kopieren'; }, 1500);
   } catch {
     window.prompt('Link zum Kopieren', url.href);
   }
@@ -172,7 +189,6 @@ if ('mediaSession' in navigator) {
   }
 }
 
-showStats('global', initialStats.global);
 selectAlbum('all');
 const params = new URLSearchParams(window.location.search);
 const requestedSong = params.get('song');

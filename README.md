@@ -18,4 +18,4 @@ Anschließend `dist/index.html` im Browser öffnen. Für einen weiteren Build `d
 2. Unter **Actions → GitHub Pages → Run workflow** den Branch `main` auswählen und den ersten Lauf starten. Weitere Pushes auf `main` bauen und veröffentlichen die Website automatisch.
 3. Die Adresse der Website steht beim erfolgreichen Lauf unter **Deployment**.
 
-Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. Ein optionales Albumcover wird aus `songs/<Album>/cover.jpg` gelesen. Die WAV-Sammlung bleibt lokal. Die bisherigen Streamzahlen aus `counter.json` erscheinen als Archiv.
+Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. Ein optionales Albumcover wird aus `songs/<Album>/cover.jpg` gelesen. Die WAV-Sammlung bleibt lokal.

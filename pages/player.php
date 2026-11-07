@@ -1,86 +1,111 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<title>Schwafelpatie FM</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Segoe UI',sans-serif;background:#111;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}
-.player-container{background:#1e1e1e;padding:2rem;border-radius:16px;max-width:520px;width:100%;box-shadow:0 0 20px rgba(0,0,0,0.6);text-align:center;}
-h1{margin-bottom:1.5rem;font-size:1.8rem;color:#ffda6c;}
-.cover{width:100%;height:300px;background:#333 center/cover no-repeat;border-radius:12px;margin-bottom:1rem;}
-.meta{margin-bottom:1rem;font-size:1rem;color:#ccc;}
-.stats-box{background:#262626;padding:.8rem;border-radius:10px;color:#ddd;text-align:left;margin-bottom:1rem;}
-.stats-box div{margin:.25rem 0;}
-select,button,input[type=range]{appearance:none;border:none;padding:.6rem 1rem;border-radius:8px;margin:.3rem;font-size:1rem;}
-select{width:100%;background:#2b2b2b;color:#fff;}
-button{cursor:pointer;background:#444;color:#fff;transition:background .3s;}
-button:hover{background:#666;}
-.controls{display:flex;justify-content:center;margin:1rem 0;}
-.controls button{margin:0 .4rem;font-size:1.4rem;}
-button.active{background:#ff9800;color:#000;}
-.volume-container{display:flex;align-items:center;justify-content:center;gap:12px;margin:1.2rem auto;}
-.volume-icon{font-size:1.4rem;color:#ffda6c;}
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;max-width:200px;height:8px;background:#333;border-radius:4px;outline:none;cursor:pointer;transition:background .3s;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#ffda6c;cursor:pointer;box-shadow:0 0 4px rgba(255,255,255,.4);transition:background .3s;}
-input[type=range]::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:#ffda6c;cursor:pointer;box-shadow:0 0 4px rgba(255,255,255,.4);}
-#timeDisplay{color:#ccc;font-size:.9rem;margin-top:.3rem;}
-#shareButton{display:flex;align-items:center;justify-content:center;margin:1rem auto;background:#333;color:#eee;gap:.5rem;transition:.3s;}
-footer{margin-top:2rem;font-size:.85rem;color:#888;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#141210">
+    <title>Schwafelpatie FM</title>
+    <link rel="stylesheet" href="pages/player.css">
 </head>
 <body>
-<div class="player-container">
-<h1>Schwafelpatie FM</h1>
-<div class="cover" id="cover"></div>
-<div class="meta"><div id="meta-title">Titel: –</div></div>
+<svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-radio" viewBox="0 0 24 24"><path d="M4 9v6m4-9v12m4-16v20m4-16v12m4-9v6"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 5 12 7-12 7Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M9 5v14m6-14v14" stroke-width="3"/></symbol>
+    <symbol id="icon-prev" viewBox="0 0 24 24"><path d="M5 5v14m14-14L7 12l12 7Z"/></symbol>
+    <symbol id="icon-next" viewBox="0 0 24 24"><path d="M19 5v14M5 5l12 7-12 7Z"/></symbol>
+    <symbol id="icon-shuffle" viewBox="0 0 24 24"><path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c5 0 7-12 12-12h3m-4-4 4 4-4 4"/></symbol>
+    <symbol id="icon-loop" viewBox="0 0 24 24"><path d="M19 7H7a4 4 0 0 0-4 4m14-7 3 3-3 3m-12 7h12a4 4 0 0 0 4-4M7 14l-3 3 3 3"/></symbol>
+    <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9h4l4-4v14l-4-4H4Zm11-1a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="icon-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 1 3-3a4 4 0 0 1 6 6l-2 2m1-1-3 3a4 4 0 0 1-6-6l2-2"/></symbol>
+</svg>
 
-<?php if($newestSong): ?>
-<button id="newestSongBtn" style="margin-bottom:1rem;background:#ff9800;color:#000;padding:.6rem 1rem;border-radius:8px;width:100%;font-weight:bold;">
-🎉 Neuster Song: <?=htmlspecialchars($newestSong['title'])?>
-</button>
-<?php endif; ?>
+<div class="shell">
+    <header class="station">
+        <span class="station-mark"><svg class="icon"><use href="#icon-radio"/></svg></span>
+        <h1>Schwafelpatie<span> FM</span></h1>
+    </header>
 
-<div class="stats-box" id="statsBox">
-<strong>Stream-Archiv</strong>
-<div>Gesamt: <span id="globalStreams">0</span> Streams, <span id="globalMinutes">0 Min</span></div>
-<div>Aktueller Song: <span id="songStreams">0</span> Streams, <span id="songMinutes">0 Min</span></div>
-</div>
+    <main>
+        <section class="deck" aria-label="Musikplayer">
+            <div class="artwork">
+                <img id="cover" src="<?=htmlspecialchars($allSongs[0]['cover'])?>" alt="" width="598" height="598">
+            </div>
 
-<select id="albumSelector" aria-label="Album auswählen">
-<option value="all">🎵 Alle Songs</option>
-<?php foreach($albumKeys as $i=>$albumName): ?>
-<option value="<?=$i?>"><?=htmlspecialchars($albumName)?></option>
-<?php endforeach; ?>
-</select>
+            <div class="playback">
+                <p class="status" id="playbackStatus"><span class="status-dot"></span><span id="playbackLabel">Bereit zur Wiedergabe</span></p>
+                <div class="track">
+                    <h2 id="meta-title"><?=htmlspecialchars($allSongs[0]['title'])?></h2>
+                    <p id="meta-album"><?=htmlspecialchars($allSongs[0]['album'])?></p>
+                </div>
 
-<select id="songSelector" aria-label="Song auswählen" disabled>
-<option disabled selected>🎧 Song auswählen...</option>
-</select>
+                <audio id="player" preload="metadata"></audio>
+                <div class="timeline">
+                    <input type="range" id="progress" min="0" max="1" step="0.01" value="0" aria-label="Wiedergabeposition" disabled>
+                    <div class="times" aria-hidden="true"><span id="elapsed">0:00</span><span id="duration">0:00</span></div>
+                </div>
 
-<audio id="player" preload="metadata"></audio>
-<div id="timeDisplay" aria-live="polite">0:00 / 0:00</div>
+                <div class="transport">
+                    <button type="button" class="control" id="shuffleBtn" aria-label="Zufallswiedergabe" title="Zufallswiedergabe" aria-pressed="false"><svg class="icon"><use href="#icon-shuffle"/></svg></button>
+                    <button type="button" class="control" id="prevBtn" aria-label="Vorheriger Song" title="Vorheriger Song"><svg class="icon"><use href="#icon-prev"/></svg></button>
+                    <button type="button" class="control play" id="playBtn" aria-label="Abspielen" title="Abspielen"><svg class="icon"><use id="playIcon" href="#icon-play"/></svg></button>
+                    <button type="button" class="control" id="nextBtn" aria-label="Nächster Song" title="Nächster Song"><svg class="icon"><use href="#icon-next"/></svg></button>
+                    <button type="button" class="control" id="loopBtn" aria-label="Song wiederholen" title="Song wiederholen" aria-pressed="false"><svg class="icon"><use href="#icon-loop"/></svg></button>
+                </div>
 
-<div class="controls">
-<button id="prevBtn" title="Vorheriger Song">⏮</button>
-<button id="playBtn" title="Play/Pause">⏯</button>
-<button id="nextBtn" title="Nächster Song">⏭</button>
-<button id="loopBtn" title="Loop an/aus" aria-pressed="false">🔁</button>
-<button id="shuffleBtn" title="Shuffle an/aus" aria-pressed="false">🔀</button>
-</div>
+                <div class="utilities">
+                    <div class="volume">
+                        <svg class="icon"><use href="#icon-volume"/></svg>
+                        <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" aria-label="Lautstärke">
+                    </div>
+                    <button type="button" id="shareButton" class="share">
+                        <svg class="icon"><use href="#icon-link"/></svg>
+                        <span id="shareLabel" aria-live="polite">Link kopieren</span>
+                    </button>
+                </div>
+            </div>
+        </section>
 
-<div class="volume-container">
-<span class="volume-icon">🔊</span>
-<input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" aria-label="Lautstärke">
-</div>
+        <section class="library" aria-labelledby="libraryTitle">
+            <div class="library-header">
+                <h2 id="libraryTitle">Mediathek</h2>
+                <p id="trackCount"><?=count($allSongs)?> Songs</p>
+            </div>
+            <div class="library-fields">
+                <div class="field">
+                    <label for="albumSelector">Album</label>
+                    <select id="albumSelector">
+                        <option value="all">Alle Alben</option>
+                        <?php foreach ($albumKeys as $i => $albumName): ?>
+                        <option value="<?=$i?>"><?=htmlspecialchars($albumName)?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="songSelector">Song</label>
+                    <select id="songSelector" disabled>
+                        <option>Song auswählen …</option>
+                    </select>
+                </div>
+            </div>
 
-<button id="shareButton" title="Link zum Teilen kopieren">🔗 Link kopieren</button>
-<footer>&copy; <?=date("Y")?> by Schwafelpatie and Suno AI</footer>
+            <?php if ($newestSong): ?>
+            <button type="button" class="latest" id="newestSongBtn">
+                <span class="latest-icon"><svg class="icon"><use href="#icon-play"/></svg></span>
+                <span class="latest-copy">
+                    <span class="latest-label">Neu in der Mediathek</span>
+                    <strong><?=htmlspecialchars($newestSong['title'])?></strong>
+                </span>
+            </button>
+            <?php endif; ?>
+        </section>
+    </main>
+
+    <footer>&copy; <?=date('Y')?> Schwafelpatie &amp; Suno AI</footer>
 </div>
 
 <script id="catalog" type="application/json"><?=json_encode(
-    compact('albums', 'albumKeys', 'allSongs', 'initialStats', 'newestSong'),
+    compact('albums', 'albumKeys', 'allSongs', 'newestSong'),
     JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_INVALID_UTF8_SUBSTITUTE
 )?></script>
 <script src="pages/player.js" defer></script>

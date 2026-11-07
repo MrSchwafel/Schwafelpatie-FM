@@ -84,6 +84,7 @@ $newestSong = null;
 $assets = array_fill_keys(array_keys($files), true);
 $assets['default-cover.jpg'] = true;
 $assets['pages/player.js'] = true;
+$assets['pages/player.css'] = true;
 foreach ($keys as $key => $path) {
     $album = basename(dirname($path));
     $info = $getID3->analyze("$root/$path");
@@ -111,7 +112,6 @@ error_reporting($errorReporting);
 $albumKeys = array_keys($albums);
 sort($albumKeys, SORT_STRING);
 $allSongs = array_merge(...array_values($albums));
-$initialStats = readJson("$root/counter.json");
 
 ob_start();
 require "$root/pages/player.php";
