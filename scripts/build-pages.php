@@ -83,6 +83,7 @@ $albums = [];
 $newestSong = null;
 $assets = array_fill_keys(array_keys($files), true);
 $assets['default-cover.jpg'] = true;
+$assets['assets/logo.svg'] = true;
 $assets['pages/player.js'] = true;
 $assets['pages/player.css'] = true;
 foreach ($keys as $key => $path) {

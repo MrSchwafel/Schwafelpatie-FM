@@ -1,6 +1,16 @@
 const { albums, albumKeys, allSongs, newestSong } =
   JSON.parse(document.getElementById('catalog').textContent);
 
+const params = new URLSearchParams(window.location.search);
+const obs = document.documentElement.dataset.player === 'obs' ? {
+  banner: document.getElementById('obsBanner'),
+  title: document.getElementById('obsTitle'),
+  album: document.getElementById('obsAlbum'),
+  status: document.getElementById('obsStatus'),
+  play: document.getElementById('obsPlay'),
+  progress: document.getElementById('obsProgress'),
+} : null;
+
 const albumSelector = document.getElementById('albumSelector');
 const songSelector = document.getElementById('songSelector');
 const player = document.getElementById('player');
@@ -50,6 +60,10 @@ function selectSong(index, autoplay = true, remember = true) {
   cover.src = song.cover;
   metaTitle.textContent = song.title;
   metaAlbum.textContent = song.album;
+  if (obs) {
+    obs.title.textContent = song.title;
+    obs.album.textContent = song.album;
+  }
   document.title = `${song.title} – Schwafelpatie FM`;
   updateTime();
   updatePlaybackState();
@@ -70,6 +84,7 @@ function play() {
   player.play().catch((error) => {
     if (error.name === 'NotAllowedError' && player.src === source && player.paused) {
       playbackLabel.textContent = 'Zum Abspielen ▶ drücken';
+      if (obs) obs.status.textContent = 'Zum Starten Logo anklicken';
     }
   });
 }
@@ -104,7 +119,9 @@ function updateTime() {
   progress.disabled = !hasDuration;
   progress.max = hasDuration ? player.duration : 1;
   progress.value = hasDuration ? player.currentTime : 0;
-  progress.style.setProperty('--filled', `${100 * Number(progress.value) / Number(progress.max)}%`);
+  const position = Number(progress.value) / Number(progress.max);
+  progress.style.setProperty('--filled', `${100 * position}%`);
+  if (obs) obs.progress.style.setProperty('--obs-position', position);
   progress.setAttribute('aria-valuetext', `${elapsed.textContent} von ${duration.textContent}`);
 }
 
@@ -118,6 +135,21 @@ function updatePlaybackState() {
   if (player.error) playbackLabel.textContent = 'Song konnte nicht geladen werden';
   else if (playing) playbackLabel.textContent = 'Wird abgespielt';
   else playbackLabel.textContent = player.currentTime > 0 ? 'Pausiert' : 'Bereit zur Wiedergabe';
+
+  if (obs) {
+    const audible = playing && player.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+    obs.banner.dataset.state = audible ? 'playing' : 'idle';
+    obs.play.setAttribute('aria-label', label);
+    if (player.error) obs.status.textContent = 'Ladefehler';
+    else if (audible) obs.status.textContent = 'Läuft gerade';
+    else if (playing) obs.status.textContent = 'Lädt …';
+    else obs.status.textContent = player.currentTime > 0 ? 'Pausiert' : 'Bereit';
+  }
+}
+
+function togglePlayback() {
+  if (player.paused) play();
+  else player.pause();
 }
 
 albumSelector.addEventListener('change', () => {
@@ -127,10 +159,7 @@ albumSelector.addEventListener('change', () => {
 songSelector.addEventListener('change', () => selectSong(Number(songSelector.value)));
 document.getElementById('prevBtn').addEventListener('click', previousSong);
 document.getElementById('nextBtn').addEventListener('click', nextSong);
-playButton.addEventListener('click', () => {
-  if (player.paused) play();
-  else player.pause();
-});
+playButton.addEventListener('click', togglePlayback);
 loopButton.addEventListener('click', () => {
   player.loop = !player.loop;
   loopButton.setAttribute('aria-pressed', player.loop);
@@ -149,6 +178,27 @@ progress.addEventListener('input', () => {
 player.addEventListener('durationchange', updateTime);
 player.addEventListener('timeupdate', updateTime);
 for (const event of ['play', 'pause', 'error']) player.addEventListener(event, updatePlaybackState);
+if (obs) {
+  const root = document.documentElement;
+  const options = document.getElementById('obsOptions');
+  const close = document.getElementById('obsClose');
+  obs.play.addEventListener('click', togglePlayback);
+  options.addEventListener('click', () => {
+    root.classList.add('obs-controls');
+    albumSelector.focus();
+  });
+  const showOverlay = () => {
+    root.classList.remove('obs-controls');
+    options.focus();
+  };
+  close.addEventListener('click', showOverlay);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && root.classList.contains('obs-controls') && event.target.tagName !== 'SELECT') {
+      showOverlay();
+    }
+  });
+  for (const event of ['playing', 'waiting']) player.addEventListener(event, updatePlaybackState);
+}
 player.addEventListener('ended', nextSong);
 
 document.getElementById('newestSongBtn')?.addEventListener('click', () => {
@@ -195,9 +245,8 @@ if ('mediaSession' in navigator) {
 }
 
 selectAlbum('all');
-const params = new URLSearchParams(window.location.search);
 const requestedSong = params.get('song');
 setShuffle(['1', 'true', 'on'].includes(params.get('shuffle')));
 const requestedIndex = allSongs.findIndex((song) => song.key === requestedSong);
 const startIndex = !requestedSong && shuffle ? Math.floor(Math.random() * allSongs.length) : Math.max(0, requestedIndex);
-selectSong(startIndex, true, false);
+selectSong(startIndex, !obs, false);

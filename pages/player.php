@@ -5,11 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#141210">
     <title>Schwafelpatie FM</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+    <script>
+        if (new URLSearchParams(location.search).get('player')?.toLowerCase() === 'obs') {
+            document.documentElement.dataset.player = 'obs';
+        }
+    </script>
     <link rel="stylesheet" href="pages/player.css">
 </head>
 <body>
 <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <symbol id="icon-radio" viewBox="0 0 24 24"><path d="M4 9v6m4-9v12m4-16v20m4-16v12m4-9v6"/></symbol>
     <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 5 12 7-12 7Z" fill="currentColor" stroke="none"/></symbol>
     <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M9 5v14m6-14v14" stroke-width="3"/></symbol>
     <symbol id="icon-prev" viewBox="0 0 24 24"><path d="M5 5v14m14-14L7 12l12 7Z"/></symbol>
@@ -18,13 +23,36 @@
     <symbol id="icon-loop" viewBox="0 0 24 24"><path d="M19 6H7a4 4 0 0 0-4 4m14-7 3 3-3 3M5 18h12a4 4 0 0 0 4-4M7 15l-3 3 3 3m3.5-10.5 1.5-1v5"/></symbol>
     <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9h4l4-4v14l-4-4H4Zm11-1a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
     <symbol id="icon-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 1 3-3a4 4 0 0 1 6 6l-2 2m1-1-3 3a4 4 0 0 1-6-6l2-2"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="var(--surface)"/><circle cx="15" cy="17" r="2.5" fill="var(--surface)"/></symbol>
 </svg>
+
+<section class="obs-banner" id="obsBanner" aria-label="OBS-Musikanzeige">
+    <button class="obs-logo" id="obsPlay" type="button" aria-label="Abspielen" title="Abspielen oder pausieren">
+        <img src="assets/logo.svg" alt="" width="72" height="72">
+    </button>
+    <div class="obs-track">
+        <div class="obs-station">
+            <span>Schwafelpatie FM</span>
+            <span class="obs-status" id="obsStatus">Bereit</span>
+        </div>
+        <p class="obs-title" id="obsTitle"><?=htmlspecialchars($allSongs[0]['title'])?></p>
+        <p class="obs-album" id="obsAlbum"><?=htmlspecialchars($allSongs[0]['album'])?></p>
+    </div>
+    <button class="obs-options" id="obsOptions" type="button" aria-label="Songauswahl öffnen" title="Songauswahl öffnen">
+        <svg class="icon" aria-hidden="true"><use href="#icon-settings"/></svg>
+    </button>
+    <div class="obs-progress" id="obsProgress" aria-hidden="true"></div>
+</section>
 
 <div class="shell">
     <header class="station">
-        <span class="station-mark"><svg class="icon"><use href="#icon-radio"/></svg></span>
+        <img class="station-mark" src="assets/logo.svg" alt="" width="48" height="48">
         <h1>Schwafelpatie<span> FM</span></h1>
     </header>
+    <div class="obs-toolbar">
+        <strong>OBS-Steuerung</strong>
+        <button class="share" type="button" id="obsClose">Overlay anzeigen</button>
+    </div>
 
     <main>
         <section class="deck" aria-label="Musikplayer">
@@ -101,7 +129,7 @@
         </section>
     </main>
 
-    <footer>&copy; <?=date('Y')?> Schwafelpatie &amp; Suno AI</footer>
+    <footer>&copy; <?=date('Y')?> Schwafelpatie &amp; Suno AI <span aria-hidden="true">·</span> <a href="?player=OBS">OBS-Overlay</a></footer>
 </div>
 
 <script id="catalog" type="application/json"><?=$catalogJson?></script>

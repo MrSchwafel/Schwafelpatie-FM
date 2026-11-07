@@ -20,6 +20,14 @@ Anschließend `dist/index.html` im Browser öffnen. Für einen weiteren Build `d
 
 Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. Ein optionales Albumcover wird aus `songs/<Album>/cover.jpg` gelesen. Die WAV-Sammlung bleibt lokal.
 
+## OBS-Overlay
+
+In OBS eine **Browserquelle** mit der URL [Schwafelpatie FM OBS](https://mrschwafel.github.io/Schwafelpatie-FM/?player=OBS) und einer Größe von **720 × 200** hinzufügen. **Audio über OBS steuern** macht die Quelle im Audiomixer regelbar. Wenn die Musik beim Szenenwechsel weiterlaufen soll, die Quelle beim Ausblenden aktiv lassen und das Neuladen beim Szenenwechsel deaktivieren.
+
+Über **Interagieren** die Quelle öffnen. Ein Klick auf das Logo startet oder pausiert die Musik. Über das Regler-Symbol die Mediathek öffnen, einen Titel wählen und mit **Overlay anzeigen** zur kompakten Anzeige zurückkehren. Das Overlay spielt selbst ab und zeigt seinen eigenen Titel. Mit `&song=SONG-ID` lässt sich ein Starttitel vorauswählen.
+
+Das Logo liegt als skalierbare SVG-Datei unter `assets/logo.svg`.
+
 ## Android-App
 
 Die App unter `android/` lädt den veröffentlichten Katalog aus `catalog.json` und streamt die MP3s von GitHub Pages. Android steuert die Wiedergabe über eine Media3-Mediensitzung, auch wenn die App im Hintergrund ist.
