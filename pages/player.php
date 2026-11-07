@@ -11,7 +11,7 @@
             document.documentElement.dataset.player = 'obs';
         }
     </script>
-    <link rel="stylesheet" href="pages/player.css">
+    <link rel="stylesheet" href="pages/player.css?v=<?=$styleVersion?>">
 </head>
 <body>
 <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -133,6 +133,6 @@
 </div>
 
 <script id="catalog" type="application/json"><?=$catalogJson?></script>
-<script src="pages/player.js" defer></script>
+<script src="pages/player.js?v=<?=$scriptVersion?>" defer></script>
 </body>
 </html>

@@ -114,6 +114,8 @@ error_reporting($errorReporting);
 $albumKeys = array_keys($albums);
 sort($albumKeys, SORT_STRING);
 $allSongs = array_merge(...array_values($albums));
+$styleVersion = substr(hash_file('sha256', "$root/pages/player.css"), 0, 16);
+$scriptVersion = substr(hash_file('sha256', "$root/pages/player.js"), 0, 16);
 $catalogJson = json_encode(
     compact('albums', 'albumKeys', 'allSongs', 'newestSong'),
     JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_INVALID_UTF8_SUBSTITUTE
