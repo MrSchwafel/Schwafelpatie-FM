@@ -66,7 +66,12 @@ function selectSong(index, autoplay = true, remember = true) {
 }
 
 function play() {
-  player.play().catch(() => {});
+  const source = player.src;
+  player.play().catch((error) => {
+    if (error.name === 'NotAllowedError' && player.src === source && player.paused) {
+      playbackLabel.textContent = 'Zum Abspielen ▶ drücken';
+    }
+  });
 }
 
 function previousSong() {

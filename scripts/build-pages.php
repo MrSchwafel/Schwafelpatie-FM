@@ -112,12 +112,16 @@ error_reporting($errorReporting);
 $albumKeys = array_keys($albums);
 sort($albumKeys, SORT_STRING);
 $allSongs = array_merge(...array_values($albums));
+$catalogJson = json_encode(
+    compact('albums', 'albumKeys', 'allSongs', 'newestSong'),
+    JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_INVALID_UTF8_SUBSTITUTE
+);
 
 ob_start();
 require "$root/pages/player.php";
 $html = ob_get_clean();
 
-$totalBytes = strlen($html);
+$totalBytes = strlen($html) + strlen($catalogJson);
 foreach (array_keys($assets) as $path) {
     if (!is_file("$root/$path")) {
         throw new RuntimeException("Datei fehlt: $path");
@@ -133,6 +137,9 @@ foreach (array_keys($assets) as $path) {
 }
 if (file_put_contents("$output/index.html", $html) === false) {
     throw new RuntimeException('index.html konnte nicht geschrieben werden.');
+}
+if (file_put_contents("$output/catalog.json", $catalogJson) === false) {
+    throw new RuntimeException('catalog.json konnte nicht geschrieben werden.');
 }
 
 printf("%d MP3s, %.1f MB → %s\n", count($files), $totalBytes / 1_000_000, $output);

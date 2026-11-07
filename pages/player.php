@@ -15,7 +15,7 @@
     <symbol id="icon-prev" viewBox="0 0 24 24"><path d="M5 5v14m14-14L7 12l12 7Z"/></symbol>
     <symbol id="icon-next" viewBox="0 0 24 24"><path d="M19 5v14M5 5l12 7-12 7Z"/></symbol>
     <symbol id="icon-shuffle" viewBox="0 0 24 24"><path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c5 0 7-12 12-12h3m-4-4 4 4-4 4"/></symbol>
-    <symbol id="icon-loop" viewBox="0 0 24 24"><path d="M19 7H7a4 4 0 0 0-4 4m14-7 3 3-3 3m-12 7h12a4 4 0 0 0 4-4M7 14l-3 3 3 3"/></symbol>
+    <symbol id="icon-loop" viewBox="0 0 24 24"><path d="M19 6H7a4 4 0 0 0-4 4m14-7 3 3-3 3M5 18h12a4 4 0 0 0 4-4M7 15l-3 3 3 3m3.5-10.5 1.5-1v5"/></symbol>
     <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9h4l4-4v14l-4-4H4Zm11-1a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
     <symbol id="icon-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 1 3-3a4 4 0 0 1 6 6l-2 2m1-1-3 3a4 4 0 0 1-6-6l2-2"/></symbol>
 </svg>
@@ -50,7 +50,7 @@
                     <button type="button" class="control" id="prevBtn" aria-label="Vorheriger Song" title="Vorheriger Song"><svg class="icon"><use href="#icon-prev"/></svg></button>
                     <button type="button" class="control play" id="playBtn" aria-label="Abspielen" title="Abspielen"><svg class="icon"><use id="playIcon" href="#icon-play"/></svg></button>
                     <button type="button" class="control" id="nextBtn" aria-label="Nächster Song" title="Nächster Song"><svg class="icon"><use href="#icon-next"/></svg></button>
-                    <button type="button" class="control" id="loopBtn" aria-label="Song wiederholen" title="Song wiederholen" aria-pressed="false"><svg class="icon"><use href="#icon-loop"/></svg></button>
+                    <button type="button" class="control" id="loopBtn" aria-label="Aktuellen Song in Endlosschleife abspielen" title="Aktuellen Song wiederholen" aria-pressed="false"><svg class="icon"><use href="#icon-loop"/></svg></button>
                 </div>
 
                 <div class="utilities">
@@ -104,10 +104,7 @@
     <footer>&copy; <?=date('Y')?> Schwafelpatie &amp; Suno AI</footer>
 </div>
 
-<script id="catalog" type="application/json"><?=json_encode(
-    compact('albums', 'albumKeys', 'allSongs', 'newestSong'),
-    JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_INVALID_UTF8_SUBSTITUTE
-)?></script>
+<script id="catalog" type="application/json"><?=$catalogJson?></script>
 <script src="pages/player.js" defer></script>
 </body>
 </html>
