@@ -24,4 +24,6 @@ Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. E
 
 Die App unter `android/` lädt den veröffentlichten Katalog aus `catalog.json` und streamt die MP3s von GitHub Pages. Android steuert die Wiedergabe über eine Media3-Mediensitzung, auch wenn die App im Hintergrund ist.
 
+Bereits geladene Audioteile landen in einem Cache von bis zu 256 MiB. Vollständig zwischengespeicherte Titel sind mit dem zuletzt geladenen Katalog auch offline abspielbar. Bei Platzbedarf gibt die App den am längsten ungenutzten Cache-Inhalt frei.
+
 Die App benötigt Android 8.0 oder neuer. Das Projekt lässt sich mit Android Studio, JDK 17 oder neuer und Android SDK 37 bauen. Mit eingerichtetem SDK erzeugt `.\android\gradlew.bat -p android :app:assembleDebug` unter Windows eine installierbare Test-APK unter `android/app/build/outputs/apk/debug/`.

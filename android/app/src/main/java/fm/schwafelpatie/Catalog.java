@@ -1,6 +1,8 @@
 package fm.schwafelpatie;
 
+import android.content.Context;
 import android.net.Uri;
+import android.util.AtomicFile;
 
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MediaMetadata;
@@ -11,6 +13,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -32,21 +36,55 @@ final class Catalog {
         this.albums = albums;
     }
 
-    static Catalog load() throws IOException, JSONException {
+    static Catalog refresh(Context context) throws IOException, JSONException {
         HttpURLConnection connection = connect(SITE.resolve("catalog.json").toURL());
-        StringBuilder json = new StringBuilder();
-        try (InputStream stream = connection.getInputStream();
-             BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            for (String line; (line = reader.readLine()) != null; ) json.append(line);
+        String json;
+        try (InputStream stream = connection.getInputStream()) {
+            json = readJson(stream);
         } finally {
             connection.disconnect();
         }
+        Catalog catalog = parse(json);
+        AtomicFile cache = catalogFile(context);
+        FileOutputStream output = null;
+        try {
+            output = cache.startWrite();
+            output.write(json.getBytes(StandardCharsets.UTF_8));
+            cache.finishWrite(output);
+        } catch (IOException ignored) {
+            if (output != null) cache.failWrite(output);
+        }
+        return catalog;
+    }
 
-        JSONObject catalog = new JSONObject(json.toString());
+    static Catalog readCached(Context context) {
+        try (InputStream input = catalogFile(context).openRead()) {
+            return parse(readJson(input));
+        } catch (IOException | JSONException | IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private static AtomicFile catalogFile(Context context) {
+        return new AtomicFile(new File(context.getCacheDir(), "catalog.json"));
+    }
+
+    private static String readJson(InputStream stream) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+        StringBuilder json = new StringBuilder();
+        for (String line; (line = reader.readLine()) != null; ) json.append(line);
+        return json.toString();
+    }
+
+    private static Catalog parse(String json) throws IOException, JSONException {
+        JSONObject catalog = new JSONObject(json);
         JSONArray songs = catalog.getJSONArray("allSongs");
         List<MediaItem> tracks = new ArrayList<>(songs.length());
         for (int index = 0; index < songs.length(); index++) {
             JSONObject song = songs.getJSONObject(index);
+            Uri file = asset(song.getString("file"));
+            String version = song.optString("version");
+            if (!version.isEmpty()) file = file.buildUpon().appendQueryParameter("v", version).build();
             MediaMetadata metadata = new MediaMetadata.Builder()
                     .setTitle(song.getString("title"))
                     .setAlbumTitle(song.getString("album"))
@@ -55,7 +93,7 @@ final class Catalog {
                     .build();
             tracks.add(new MediaItem.Builder()
                     .setMediaId(song.getString("key"))
-                    .setUri(asset(song.getString("file")))
+                    .setUri(file)
                     .setMimeType(MimeTypes.AUDIO_MPEG)
                     .setMediaMetadata(metadata)
                     .build());
