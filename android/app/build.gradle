@@ -1,0 +1,26 @@
+plugins {
+    id 'com.android.application' version '9.4.0'
+}
+
+android {
+    namespace = 'fm.schwafelpatie'
+    compileSdk = 37
+
+    defaultConfig {
+        applicationId = 'fm.schwafelpatie'
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 1
+        versionName = '1.0'
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.media3:media3-exoplayer:1.11.1'
+    implementation 'androidx.media3:media3-session:1.11.1'
+}

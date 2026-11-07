@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Schwafelpatie" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#FFC46C</item>
+        <item name="android:windowBackground">#141210</item>
+        <item name="android:statusBarColor">#141210</item>
+        <item name="android:navigationBarColor">#141210</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+</resources>
