@@ -30,6 +30,34 @@ function copyAsset(string $root, string $output, string $path): void {
     }
 }
 
+function embeddedCover(array $pictures): ?array {
+    $fallback = null;
+    foreach ($pictures as $picture) {
+        $data = $picture['data'] ?? '';
+        if ($data === '' || strlen($data) > 4 * 1024 * 1024) {
+            continue;
+        }
+        $image = @getimagesizefromstring($data);
+        if (!$image || max($image[0], $image[1]) > 4096 || min($image[0], $image[1]) < 1) {
+            continue;
+        }
+        $extension = match ($image[2]) {
+            IMAGETYPE_JPEG => 'jpg',
+            IMAGETYPE_PNG => 'png',
+            default => null,
+        };
+        if ($extension === null) {
+            continue;
+        }
+        $cover = [$data, $extension];
+        if (($picture['picturetype'] ?? '') === 'Cover (front)') {
+            return $cover;
+        }
+        $fallback ??= $cover;
+    }
+    return $fallback;
+}
+
 $files = [];
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator("$root/songs/standard"));
 foreach ($iterator as $file) {
@@ -81,6 +109,7 @@ require_once "$root/getid3/getid3.php";
 $getID3 = new getID3();
 $albums = [];
 $newestSong = null;
+$coverBytes = 0;
 $assets = array_fill_keys(array_keys($files), true);
 $assets['default-cover.jpg'] = true;
 $assets['assets/logo.svg'] = true;
@@ -101,14 +130,30 @@ if ($androidApk !== null) {
     $assets[$androidApk] = true;
 }
 foreach ($keys as $key => $path) {
-    $album = basename(dirname($path));
+    $albumPath = dirname($path);
+    $album = basename($albumPath);
     $info = $getID3->analyze("$root/$path");
     $title = $info['tags']['id3v2']['title'][0] ?? $info['tags']['id3']['title'][0] ?? pathinfo($path, PATHINFO_FILENAME);
-    $cover = "songs/$album/cover.jpg";
-    if (is_file("$root/$cover")) {
-        $assets[$cover] = true;
+    $embedded = embeddedCover($info['comments']['picture'] ?? []);
+    if ($embedded !== null) {
+        [$image, $extension] = $embedded;
+        $cover = 'covers/' . hash('sha256', $image) . '.' . $extension;
+        if (!is_file("$output/$cover")) {
+            if ((!is_dir("$output/covers") && !mkdir("$output/covers", 0777, true))
+                || file_put_contents("$output/$cover", $image) !== strlen($image)) {
+                throw new RuntimeException("Cover konnte nicht geschrieben werden: $path");
+            }
+            $coverBytes += strlen($image);
+        }
     } else {
         $cover = 'default-cover.jpg';
+        foreach (["$albumPath/cover.jpg", "$albumPath/cover.png", "songs/$album/cover.jpg"] as $albumCover) {
+            if (is_file("$root/$albumCover")) {
+                $cover = $albumCover;
+                $assets[$cover] = true;
+                break;
+            }
+        }
     }
     $song = [
         'key' => (string) $key,
@@ -139,7 +184,7 @@ ob_start();
 require "$root/pages/player.php";
 $html = ob_get_clean();
 
-$totalBytes = strlen($html) + strlen($catalogJson);
+$totalBytes = strlen($html) + strlen($catalogJson) + $coverBytes;
 if ($androidApk !== null) {
     $totalBytes += filesize("$root/$androidApk") + strlen($apkMetadata);
 }

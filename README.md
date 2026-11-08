@@ -18,7 +18,7 @@ Anschließend `dist/index.html` im Browser öffnen. Für einen weiteren Build `d
 2. Unter **Actions → GitHub Pages → Run workflow** den Branch `main` auswählen und den ersten Lauf starten. Weitere Pushes auf `main` bauen und veröffentlichen die Website automatisch.
 3. Die Adresse der Website steht beim erfolgreichen Lauf unter **Deployment**.
 
-Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. Ein optionales Albumcover wird aus `songs/<Album>/cover.jpg` gelesen. Die WAV-Sammlung bleibt lokal.
+Neue Songs als MP3 in den passenden Albumordner unter `songs/standard/` legen. Der Build übernimmt eingebettete JPEG- und PNG-Cover bis 4 MiB und 4096 Pixel Kantenlänge. Bei mehreren Bildern hat das in Mp3tag als Frontcover markierte Bild Vorrang. Danach folgen `cover.jpg` oder `cover.png` im Albumordner, das bisherige `songs/<Album>/cover.jpg` und das Standardbild. Die WAV-Sammlung bleibt lokal.
 
 ## OBS-Overlay
 
@@ -35,6 +35,8 @@ Das Logo liegt als skalierbare SVG-Datei unter `assets/logo.svg`.
 ## Android-App
 
 Die App unter `android/` lädt den veröffentlichten Katalog aus `catalog.json` und streamt die MP3s von GitHub Pages. Android steuert die Wiedergabe über eine Media3-Mediensitzung, auch wenn die App im Hintergrund ist.
+
+Die erweiterte Android-Mediensteuerung bietet Shuffle und die Wiederholung des aktuellen Titels. Die Anzeige zusätzlicher Tasten hängt von der Android-Ansicht ab.
 
 Bereits geladene Audioteile landen in einem Cache von bis zu 256 MiB. Vollständig zwischengespeicherte Titel sind mit dem zuletzt geladenen Katalog auch offline abspielbar. Bei Platzbedarf gibt die App den am längsten ungenutzten Cache-Inhalt frei.
 

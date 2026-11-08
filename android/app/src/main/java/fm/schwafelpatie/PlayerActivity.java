@@ -8,7 +8,6 @@ import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Typeface;
@@ -49,14 +48,13 @@ import android.widget.TextView;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSourceBitmapLoader;
 import androidx.media3.session.MediaController;
 import androidx.media3.session.SessionToken;
 
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -66,6 +64,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -87,6 +87,7 @@ public final class PlayerActivity extends Activity {
         @Override protected int sizeOf(Uri uri, Bitmap bitmap) { return bitmap.getAllocationByteCount(); }
     };
     private final Map<Uri, List<ImageView>> artworkRequests = new HashMap<>();
+    private DataSourceBitmapLoader artworkLoader;
     private Catalog catalog;
     private SharedPreferences preferences;
     private Set<String> selectedAlbums;
@@ -125,6 +126,7 @@ public final class PlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        artworkLoader = new DataSourceBitmapLoader.Builder(this).setMaximumOutputDimension(1024).build();
         preferences = getSharedPreferences("player", MODE_PRIVATE);
         selectedAlbums = new HashSet<>(preferences.getStringSet("albums", Collections.emptySet()));
         setContentView(buildScreen());
@@ -397,26 +399,18 @@ public final class PlayerActivity extends Activity {
         List<ImageView> waiting = artworkRequests.computeIfAbsent(uri, ignored -> new ArrayList<>());
         waiting.add(target);
         if (waiting.size() > 1) return;
-        network.execute(() -> {
-            Bitmap image = null;
+        ListenableFuture<Bitmap> request = artworkLoader.loadBitmap(uri);
+        request.addListener(() -> {
+            List<ImageView> targets = artworkRequests.remove(uri);
+            if (isDestroyed()) return;
             try {
-                HttpURLConnection connection = Catalog.connect(new URL(uri.toString()));
-                try (InputStream stream = connection.getInputStream()) {
-                    image = BitmapFactory.decodeStream(stream);
-                } finally {
-                    connection.disconnect();
-                }
-            } catch (Exception ignored) {
-                // The station icon is the fallback when cover art is unavailable.
-            }
-            Bitmap result = image;
-            ui.post(() -> {
-                List<ImageView> targets = artworkRequests.remove(uri);
-                if (isDestroyed() || result == null) return;
+                Bitmap result = Futures.getDone(request);
                 artworkCache.put(uri, result);
                 for (ImageView view : targets) if (uri.equals(view.getTag())) view.setImageBitmap(result);
-            });
-        });
+            } catch (ExecutionException | CancellationException ignored) {
+                // Keep the station icon when the cover cannot be loaded.
+            }
+        }, ui::post);
     }
 
     private void renderPosition() {

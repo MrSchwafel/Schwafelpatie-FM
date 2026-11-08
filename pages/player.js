@@ -180,7 +180,7 @@ function selectSong(song, autoplay = true, remember = true) {
       title: song.title,
       artist: 'Schwafelpatie FM',
       album: song.album,
-      artwork: [{ src: new URL(song.cover, document.baseURI).href, type: 'image/jpeg' }],
+      artwork: [{ src: new URL(song.cover, document.baseURI).href }],
     });
   }
   if (autoplay) play();
