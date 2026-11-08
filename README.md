@@ -28,6 +28,8 @@ Die OBS-Quelle startet automatisch mit Shuffle. Mit `&song=SONG-ID` lässt sich 
 
 Über **Interagieren** die Quelle öffnen. Ein Klick auf das Logo startet oder pausiert die Musik. Über das Regler-Symbol die Mediathek öffnen, einen Titel wählen und mit **Overlay anzeigen** zur kompakten Anzeige zurückkehren. Das Overlay zeigt den Titel seiner eigenen Wiedergabe.
 
+In der Mediathek lassen sich mehrere Alben zum Hören auswählen. OBS speichert die Auswahl im Browserprofil nach dem Namen in der Quell-URL. Ergänze zum Beispiel `&profile=stream` oder `&profile=community` für getrennte Auswahlen. Ohne Namen gilt die Auswahl für `standard`. Im normalen Web-Player gilt die Auswahl für den geöffneten Tab.
+
 Das Logo liegt als skalierbare SVG-Datei unter `assets/logo.svg`.
 
 ## Android-App
@@ -37,3 +39,5 @@ Die App unter `android/` lädt den veröffentlichten Katalog aus `catalog.json` 
 Bereits geladene Audioteile landen in einem Cache von bis zu 256 MiB. Vollständig zwischengespeicherte Titel sind mit dem zuletzt geladenen Katalog auch offline abspielbar. Bei Platzbedarf gibt die App den am längsten ungenutzten Cache-Inhalt frei.
 
 Die App benötigt Android 8.0 oder neuer. Das Projekt lässt sich mit Android Studio, JDK 17 oder neuer und Android SDK 37 bauen. Mit eingerichtetem SDK erzeugt `.\android\gradlew.bat -p android :app:assembleDebug` unter Windows eine installierbare Test-APK unter `android/app/build/outputs/apk/debug/`.
+
+GitHub Pages übernimmt `downloads/Schwafelpatie-FM.apk` in den Website-Build. Für eine neue Version die APK dort ersetzen und für Updates dieselbe Signatur wie bei der vorherigen APK verwenden.

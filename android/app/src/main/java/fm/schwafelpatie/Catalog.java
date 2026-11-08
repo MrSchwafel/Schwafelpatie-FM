@@ -24,20 +24,25 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 final class Catalog {
     static final URI SITE = URI.create("https://mrschwafel.github.io/Schwafelpatie-FM/");
 
     final List<MediaItem> tracks;
     final List<String> albums;
+    final MediaItem newest;
 
-    private Catalog(List<MediaItem> tracks, List<String> albums) {
+    private Catalog(List<MediaItem> tracks, List<String> albums, MediaItem newest) {
         this.tracks = tracks;
         this.albums = albums;
+        this.newest = newest;
     }
 
     static Catalog refresh(Context context) throws IOException, JSONException {
         HttpURLConnection connection = connect(SITE.resolve("catalog.json").toURL());
+        connection.setUseCaches(false);
+        connection.setRequestProperty("Cache-Control", "no-cache");
         String json;
         try (InputStream stream = connection.getInputStream()) {
             json = readJson(stream);
@@ -79,6 +84,9 @@ final class Catalog {
     private static Catalog parse(String json) throws IOException, JSONException {
         JSONObject catalog = new JSONObject(json);
         JSONArray songs = catalog.getJSONArray("allSongs");
+        JSONObject newestSong = catalog.optJSONObject("newestSong");
+        String newestKey = newestSong == null ? "" : newestSong.optString("key");
+        MediaItem newest = null;
         List<MediaItem> tracks = new ArrayList<>(songs.length());
         for (int index = 0; index < songs.length(); index++) {
             JSONObject song = songs.getJSONObject(index);
@@ -91,28 +99,31 @@ final class Catalog {
                     .setArtist("Schwafelpatie FM")
                     .setArtworkUri(asset(song.getString("cover")))
                     .build();
-            tracks.add(new MediaItem.Builder()
+            MediaItem item = new MediaItem.Builder()
                     .setMediaId(song.getString("key"))
                     .setUri(file)
+                    .setRequestMetadata(new MediaItem.RequestMetadata.Builder().setMediaUri(file).build())
                     .setMimeType(MimeTypes.AUDIO_MPEG)
                     .setMediaMetadata(metadata)
-                    .build());
+                    .build();
+            tracks.add(item);
+            if (item.mediaId.equals(newestKey)) newest = item;
         }
         if (tracks.isEmpty()) throw new IOException("Leere Mediathek");
 
         JSONArray albumKeys = catalog.getJSONArray("albumKeys");
         List<String> albums = new ArrayList<>(albumKeys.length());
         for (int index = 0; index < albumKeys.length(); index++) albums.add(albumKeys.getString(index));
-        return new Catalog(tracks, albums);
+        return new Catalog(tracks, albums, newest);
     }
 
-    List<MediaItem> tracksIn(String album) {
-        if (album == null) return tracks;
+    List<MediaItem> tracksIn(Set<String> selected) {
+        if (selected.isEmpty()) return tracks;
         List<MediaItem> matches = new ArrayList<>();
         for (MediaItem track : tracks) {
-            if (album.contentEquals(track.mediaMetadata.albumTitle)) matches.add(track);
+            if (selected.contains(String.valueOf(track.mediaMetadata.albumTitle))) matches.add(track);
         }
-        return matches;
+        return matches.isEmpty() ? tracks : matches;
     }
 
     static HttpURLConnection connect(URL url) throws IOException {

@@ -48,6 +48,9 @@
     <header class="station">
         <img class="station-mark" src="assets/logo.svg" alt="" width="48" height="48">
         <h1>Schwafelpatie<span> FM</span></h1>
+        <?php if ($apkVersion !== null): ?>
+        <a class="share app-download" href="<?=htmlspecialchars($androidApk)?>?v=<?=$apkVersion?>" download>Android-App <span>APK herunterladen</span></a>
+        <?php endif; ?>
     </header>
     <div class="obs-toolbar">
         <strong>OBS-Steuerung</strong>
@@ -101,13 +104,8 @@
             </div>
             <div class="library-fields">
                 <div class="field">
-                    <label for="albumSelector">Album</label>
-                    <select id="albumSelector">
-                        <option value="all">Alle Alben</option>
-                        <?php foreach ($albumKeys as $i => $albumName): ?>
-                        <option value="<?=$i?>"><?=htmlspecialchars($albumName)?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label id="albumLabel">Alben</label>
+                    <button type="button" class="album-picker" id="albumSelector" aria-labelledby="albumLabel albumSummary"><span id="albumSummary">Alle Alben</span></button>
                 </div>
                 <div class="field">
                     <label for="songSelector">Song</label>
@@ -126,11 +124,35 @@
                 </span>
             </button>
             <?php endif; ?>
+            <button type="button" class="latest" id="sebiSoundtrack" hidden>
+                <span class="latest-icon"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></span>
+                <span class="latest-copy">
+                    <span class="latest-label">Sebi ist schuld · Hier ist der passende Soundtrack</span>
+                    <strong>Die Hymne starten</strong>
+                    <span>Öffnet das Sebi-Album mit Rock, Austropop, Pop-Jazz und der Katastrophensuite.</span>
+                </span>
+            </button>
         </section>
     </main>
 
     <footer>&copy; <?=date('Y')?> Schwafelpatie &amp; Suno AI <span aria-hidden="true">·</span> <a href="?player=OBS">OBS-Overlay</a></footer>
 </div>
+
+<dialog id="albumDialog" aria-labelledby="albumDialogTitle">
+    <form method="dialog">
+        <h2 id="albumDialogTitle">Alben zum Hören auswählen</h2>
+        <div class="album-list">
+            <?php foreach ($albumKeys as $albumName): ?>
+            <label><input type="checkbox" name="album" value="<?=htmlspecialchars($albumName)?>"> <?=htmlspecialchars($albumName)?></label>
+            <?php endforeach; ?>
+        </div>
+        <div class="album-actions">
+            <button type="submit" class="share" value="cancel">Abbrechen</button>
+            <button type="submit" class="share" value="all">Alle Alben</button>
+            <button type="submit" class="share" value="apply">Übernehmen</button>
+        </div>
+    </form>
+</dialog>
 
 <script id="catalog" type="application/json"><?=$catalogJson?></script>
 <script src="pages/player.js?v=<?=$scriptVersion?>" defer></script>

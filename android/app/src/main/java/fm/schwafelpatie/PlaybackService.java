@@ -43,7 +43,7 @@ public final class PlaybackService extends MediaSessionService {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent sessionActivity = PendingIntent.getActivity(
                 this, 0, openPlayer, PendingIntent.FLAG_IMMUTABLE);
-        session = new MediaSession.Builder(this, player)
+        session = new MediaSession.Builder(this, new HistoryPlayer(player))
                 .setSessionActivity(sessionActivity)
                 .build();
     }

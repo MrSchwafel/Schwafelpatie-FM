@@ -86,6 +86,12 @@ $assets['default-cover.jpg'] = true;
 $assets['assets/logo.svg'] = true;
 $assets['pages/player.js'] = true;
 $assets['pages/player.css'] = true;
+$androidApk = 'downloads/Schwafelpatie-FM.apk';
+$apkVersion = null;
+if (is_file("$root/$androidApk")) {
+    $assets[$androidApk] = true;
+    $apkVersion = substr(hash_file('sha256', "$root/$androidApk"), 0, 16);
+}
 foreach ($keys as $key => $path) {
     $album = basename(dirname($path));
     $info = $getID3->analyze("$root/$path");

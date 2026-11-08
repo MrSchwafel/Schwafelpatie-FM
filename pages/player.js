@@ -1,4 +1,4 @@
-const { albums, albumKeys, allSongs, newestSong } =
+const { albumKeys, allSongs, newestSong } =
   JSON.parse(document.getElementById('catalog').textContent);
 
 const params = new URLSearchParams(window.location.search);
@@ -12,6 +12,9 @@ const obs = document.documentElement.dataset.player === 'obs' ? {
 } : null;
 
 const albumSelector = document.getElementById('albumSelector');
+const albumDialog = document.getElementById('albumDialog');
+const albumSummary = document.getElementById('albumSummary');
+const albumCheckboxes = [...albumDialog.querySelectorAll('input[name="album"]')];
 const songSelector = document.getElementById('songSelector');
 const player = document.getElementById('player');
 const cover = document.getElementById('cover');
@@ -30,32 +33,67 @@ const shuffleButton = document.getElementById('shuffleBtn');
 const loopButton = document.getElementById('loopBtn');
 const shareButton = document.getElementById('shareButton');
 const shareLabel = document.getElementById('shareLabel');
+const previousButton = document.getElementById('prevBtn');
+const newestButton = document.getElementById('newestSongBtn');
+const sebiButton = document.getElementById('sebiSoundtrack');
+const sebiSong = allSongs.find((song) => song.key === 'sebi-ist-schuld-die-hymne-des-gescheiterten-fortschritts');
+const filterKey = obs ? `schwafelpatie:obs:albums:${params.get('profile')?.trim() || 'standard'}` : 'schwafelpatie:web:albums';
 
 let playlist = allSongs;
-let currentIndex = 0;
+let songsByKey = new Map();
+let selectedAlbums = [];
+let currentSong;
 let shuffle = false;
-const history = [];
+let repeat = false;
+const previousSongs = [];
+const upcomingSongs = [];
 let shareTimer;
 
-function selectAlbum(value) {
-  playlist = value === 'all' ? allSongs : albums[albumKeys[Number(value)]];
-  albumSelector.value = value;
-  trackCount.textContent = `${playlist.length} ${playlist.length === 1 ? 'Song' : 'Songs'}`;
-  songSelector.replaceChildren();
-  playlist.forEach((song, index) => {
-    const label = value === 'all' ? `${song.album} - ${song.title}` : song.title;
-    songSelector.add(new Option(label, index));
-  });
-  songSelector.disabled = false;
-  history.length = 0;
+function loadAlbums() {
+  try {
+    const saved = JSON.parse((obs ? localStorage : sessionStorage).getItem(filterKey));
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
 }
 
-function selectSong(index, autoplay = true, remember = true) {
-  const song = playlist[index];
+function applyAlbums(selection, save = true) {
+  selectedAlbums = albumKeys.filter((album) => selection.includes(album));
+  if (selectedAlbums.length === albumKeys.length) selectedAlbums = [];
+  if (save) {
+    try {
+      (obs ? localStorage : sessionStorage).setItem(filterKey, JSON.stringify(selectedAlbums));
+    } catch {
+      // Playback still works when browser storage is unavailable.
+    }
+  }
+  playlist = selectedAlbums.length ? allSongs.filter((song) => selectedAlbums.includes(song.album)) : allSongs;
+  songsByKey = new Map(playlist.map((song) => [song.key, song]));
+  albumSummary.textContent = selectedAlbums.length > 1 ? `${selectedAlbums.length} Alben ausgewählt` : selectedAlbums[0] ?? 'Alle Alben';
+  trackCount.textContent = `${playlist.length} ${playlist.length === 1 ? 'Song' : 'Songs'}`;
+  const placeholder = new Option('Song auswählen …', '');
+  placeholder.disabled = true;
+  songSelector.replaceChildren(placeholder, ...playlist.map((song) => new Option(
+    selectedAlbums.length === 1 ? song.title : `${song.album} - ${song.title}`, song.key,
+  )));
+  songSelector.disabled = false;
+  songSelector.value = songsByKey.has(currentSong?.key) ? currentSong.key : '';
+  player.loop = repeat && songsByKey.has(currentSong?.key);
+  if (newestButton) newestButton.hidden = !songsByKey.has(newestSong?.key);
+  updatePreviousButton();
+}
+
+function selectSong(song, autoplay = true, remember = true) {
   if (!song) return;
-  if (remember && index !== currentIndex) history.push(currentIndex);
-  currentIndex = index;
-  songSelector.value = index;
+  if (remember && currentSong?.key !== song.key) {
+    if (currentSong) previousSongs.push(currentSong.key);
+    upcomingSongs.length = 0;
+  }
+  currentSong = song;
+  player.loop = repeat && songsByKey.has(song.key);
+  songSelector.value = songsByKey.has(song.key) ? song.key : '';
+  updatePreviousButton();
   player.src = song.file;
   cover.src = song.cover;
   metaTitle.textContent = song.title;
@@ -89,17 +127,35 @@ function play() {
   });
 }
 
+function updatePreviousButton() {
+  previousButton.disabled = !previousSongs.some((key) => key !== currentSong?.key && songsByKey.has(key));
+}
+
+function takeFromHistory(history) {
+  while (history.length) {
+    const key = history.pop();
+    if (key !== currentSong?.key && songsByKey.has(key)) return songsByKey.get(key);
+  }
+}
+
 function previousSong() {
-  const index = history.pop() ?? (currentIndex - 1 + playlist.length) % playlist.length;
-  selectSong(index, true, false);
+  const song = takeFromHistory(previousSongs);
+  if (!song) return;
+  upcomingSongs.push(currentSong.key);
+  selectSong(song, true, false);
 }
 
 function nextSong() {
-  let index = (currentIndex + 1) % playlist.length;
-  if (shuffle && playlist.length > 1) {
-    index = (currentIndex + 1 + Math.floor(Math.random() * (playlist.length - 1))) % playlist.length;
+  const revisited = takeFromHistory(upcomingSongs);
+  if (revisited) {
+    previousSongs.push(currentSong.key);
+    selectSong(revisited, true, false);
+    return;
   }
-  selectSong(index);
+  const index = playlist.findIndex((song) => song.key === currentSong?.key);
+  const candidates = shuffle ? playlist.filter((song) => song.key !== currentSong?.key) : [];
+  const next = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : playlist[(index + 1) % playlist.length];
+  selectSong(next);
 }
 
 function setShuffle(enabled) {
@@ -152,17 +208,28 @@ function togglePlayback() {
   else player.pause();
 }
 
-albumSelector.addEventListener('change', () => {
-  selectAlbum(albumSelector.value);
-  selectSong(0, true, false);
+albumSelector.addEventListener('click', () => {
+  for (const checkbox of albumCheckboxes) checkbox.checked = selectedAlbums.includes(checkbox.value);
+  albumDialog.returnValue = '';
+  albumDialog.showModal();
 });
-songSelector.addEventListener('change', () => selectSong(Number(songSelector.value)));
-document.getElementById('prevBtn').addEventListener('click', previousSong);
+albumDialog.addEventListener('close', () => {
+  if (albumDialog.returnValue === 'all') applyAlbums([]);
+  if (albumDialog.returnValue === 'apply') {
+    applyAlbums(albumCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value));
+  }
+  if (['all', 'apply'].includes(albumDialog.returnValue) && player.paused && !songsByKey.has(currentSong?.key)) {
+    selectSong(playlist[0], false, false);
+  }
+});
+songSelector.addEventListener('change', () => selectSong(songsByKey.get(songSelector.value)));
+previousButton.addEventListener('click', previousSong);
 document.getElementById('nextBtn').addEventListener('click', nextSong);
 playButton.addEventListener('click', togglePlayback);
 loopButton.addEventListener('click', () => {
-  player.loop = !player.loop;
-  loopButton.setAttribute('aria-pressed', player.loop);
+  repeat = !repeat;
+  player.loop = repeat && songsByKey.has(currentSong?.key);
+  loopButton.setAttribute('aria-pressed', repeat);
 });
 shuffleButton.addEventListener('click', () => setShuffle(!shuffle));
 volume.addEventListener('input', () => {
@@ -193,7 +260,7 @@ if (obs) {
   };
   close.addEventListener('click', showOverlay);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && root.classList.contains('obs-controls') && event.target.tagName !== 'SELECT') {
+    if (event.key === 'Escape' && !albumDialog.open && root.classList.contains('obs-controls') && event.target.tagName !== 'SELECT') {
       showOverlay();
     }
   });
@@ -201,16 +268,19 @@ if (obs) {
 }
 player.addEventListener('ended', nextSong);
 
-document.getElementById('newestSongBtn')?.addEventListener('click', () => {
-  selectAlbum('all');
-  selectSong(allSongs.findIndex((song) => song.key === newestSong.key), true, false);
+newestButton?.addEventListener('click', () => selectSong(songsByKey.get(newestSong.key)));
+sebiButton.hidden = !sebiSong || Boolean(obs);
+sebiButton.addEventListener('click', () => {
+  if (!sebiSong) return;
+  applyAlbums([sebiSong.album]);
+  selectSong(sebiSong);
 });
 
 shareButton.addEventListener('click', async () => {
   const url = new URL(window.location.href);
   url.search = '';
   url.hash = '';
-  url.searchParams.set('song', playlist[currentIndex].key);
+  url.searchParams.set('song', currentSong.key);
   try {
     await navigator.clipboard.writeText(url.href);
     clearTimeout(shareTimer);
@@ -244,10 +314,10 @@ if ('mediaSession' in navigator) {
   }
 }
 
-selectAlbum('all');
+applyAlbums(loadAlbums(), false);
 const requestedSong = params.get('song');
 const requestedShuffle = params.get('shuffle');
 setShuffle(requestedShuffle === null ? Boolean(obs) : ['1', 'true', 'on'].includes(requestedShuffle));
-const requestedIndex = allSongs.findIndex((song) => song.key === requestedSong);
-const startIndex = !requestedSong && shuffle ? Math.floor(Math.random() * allSongs.length) : Math.max(0, requestedIndex);
-selectSong(startIndex, true, false);
+const startSong = (obs ? songsByKey.get(requestedSong) : allSongs.find((song) => song.key === requestedSong))
+  ?? playlist[shuffle ? Math.floor(Math.random() * playlist.length) : 0];
+selectSong(startSong, true, false);

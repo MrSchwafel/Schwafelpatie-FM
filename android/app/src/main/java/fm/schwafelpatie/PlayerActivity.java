@@ -3,6 +3,7 @@ package fm.schwafelpatie;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ComponentName;
+import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -45,9 +46,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -61,22 +64,26 @@ public final class PlayerActivity extends Activity {
     private static final int RAISED = 0xff2b2620;
     private static final int BORDER = 0xff443b31;
     private static final int SEEK_STEPS = 1000;
+    private static final String SEBI_HYMN = "sebi-ist-schuld-die-hymne-des-gescheiterten-fortschritts";
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private Catalog catalog;
-    private String selectedAlbum;
+    private SharedPreferences preferences;
+    private Set<String> selectedAlbums;
     private boolean loadingCatalog;
+    private boolean catalogRefreshFailed;
     private boolean scrubbing;
     private Uri artwork;
     private ListenableFuture<MediaController> connection;
     private MediaController player;
-    private TextView status, track, album, elapsed, durationLabel, libraryCount;
+    private TextView status, track, album, elapsed, durationLabel, libraryCount, catalogStatus;
     private GradientDrawable statusDot;
     private ImageView cover;
     private SeekBar seek;
     private ImageButton play, previous, next, shuffle, repeat;
-    private Button albums, songs, retry;
+    private Button albums, songs, retry, newest, sebiSoundtrack;
+    private MediaItem sebiSong;
 
     private final Player.Listener listener = new Player.Listener() {
         @Override
@@ -96,20 +103,15 @@ public final class PlayerActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        if (state != null) selectedAlbum = state.getString("album");
+        preferences = getSharedPreferences("player", MODE_PRIVATE);
+        selectedAlbums = new HashSet<>(preferences.getStringSet("albums", Collections.emptySet()));
         setContentView(buildScreen());
-        loadCatalog();
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle state) {
-        state.putString("album", selectedAlbum);
-        super.onSaveInstanceState(state);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
+        loadCatalog();
         SessionToken token = new SessionToken(this, new ComponentName(this, PlaybackService.class));
         ListenableFuture<MediaController> future = new MediaController.Builder(this, token).buildAsync();
         connection = future;
@@ -118,6 +120,7 @@ public final class PlayerActivity extends Activity {
             try {
                 player = future.get();
                 player.addListener(listener);
+                syncQueue();
                 render();
             } catch (Exception error) {
                 status.setText("Player konnte nicht gestartet werden.");
@@ -143,6 +146,7 @@ public final class PlayerActivity extends Activity {
     }
 
     private void loadCatalog() {
+        if (loadingCatalog) return;
         loadingCatalog = true;
         render();
         network.execute(() -> {
@@ -156,12 +160,13 @@ public final class PlayerActivity extends Activity {
             try {
                 loaded = Catalog.refresh(this);
             } catch (Exception ignored) {
-                // The retry control stays available after a network or catalog error.
+                // Keep using the last catalog until the next successful refresh.
             }
             Catalog result = loaded;
             ui.post(() -> {
                 if (isDestroyed()) return;
                 loadingCatalog = false;
+                catalogRefreshFailed = result == null;
                 if (result != null) applyCatalog(result);
                 else render();
             });
@@ -170,36 +175,113 @@ public final class PlayerActivity extends Activity {
 
     private void applyCatalog(Catalog result) {
         catalog = result;
-        if (!catalog.albums.contains(selectedAlbum)) selectedAlbum = null;
+        sebiSong = null;
+        for (MediaItem item : catalog.tracks) {
+            if (SEBI_HYMN.equals(item.mediaId)) {
+                sebiSong = item;
+                break;
+            }
+        }
+        syncQueue();
         render();
     }
 
+    private void saveAlbums(Set<String> selection) {
+        selectedAlbums = selection.size() == catalog.albums.size() ? Collections.emptySet() : selection;
+        preferences.edit().putStringSet("albums", selectedAlbums).apply();
+    }
+
     private void chooseAlbum() {
-        List<String> options = new ArrayList<>();
-        options.add("Alle Alben");
-        options.addAll(catalog.albums);
+        String[] options = catalog.albums.toArray(new String[0]);
+        Set<String> selection = new HashSet<>(selectedAlbums);
+        selection.retainAll(catalog.albums);
+        boolean[] checked = new boolean[options.length];
+        for (int index = 0; index < options.length; index++) checked[index] = selection.contains(options[index]);
         new AlertDialog.Builder(this)
-                .setTitle("Album auswählen")
-                .setItems(options.toArray(new String[0]), (dialog, index) -> {
-                    selectedAlbum = index == 0 ? null : options.get(index);
-                    render();
+                .setTitle("Alben zum Hören auswählen")
+                .setMultiChoiceItems(options, checked, (dialog, index, enabled) -> {
+                    if (enabled) selection.add(options[index]);
+                    else selection.remove(options[index]);
                 })
+                .setNegativeButton("Abbrechen", null)
+                .setNeutralButton("Alle Alben", (dialog, button) -> applyAlbums(Collections.emptySet()))
+                .setPositiveButton("Übernehmen", (dialog, button) -> applyAlbums(selection))
                 .show();
     }
 
+    private void applyAlbums(Set<String> selection) {
+        saveAlbums(selection);
+        syncQueue();
+        render();
+    }
+
+    private void syncQueue() {
+        if (catalog == null || player == null || player.getCurrentMediaItem() == null) return;
+        List<MediaItem> queue = new ArrayList<>(catalog.tracksIn(selectedAlbums));
+        MediaItem current = player.getCurrentMediaItem();
+        int index = indexOf(queue, current.mediaId);
+        long position = player.getCurrentPosition();
+        if (index < 0) {
+            if (player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED) {
+                Bundle extras = new Bundle();
+                extras.putBoolean(HistoryPlayer.FINISH_CURRENT, true);
+                queue.add(0, current.buildUpon().setUri(current.requestMetadata.mediaUri).setMediaMetadata(
+                        current.mediaMetadata.buildUpon().setExtras(extras).build()).build());
+            } else {
+                position = 0;
+            }
+            index = 0;
+        }
+        if (queue.size() == player.getMediaItemCount()) {
+            boolean same = true;
+            for (int i = 0; i < queue.size(); i++) {
+                MediaItem existing = player.getMediaItemAt(i);
+                MediaItem candidate = queue.get(i);
+                if (!candidate.mediaId.equals(existing.mediaId) || !candidate.requestMetadata.equals(existing.requestMetadata)
+                        || !candidate.mediaMetadata.equals(existing.mediaMetadata)
+                        || HistoryPlayer.isFinishing(candidate) != HistoryPlayer.isFinishing(existing)) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return;
+        }
+        player.setMediaItems(queue, index, position);
+        if (player.getPlaybackState() == Player.STATE_IDLE) player.prepare();
+    }
+
+    private int indexOf(List<MediaItem> queue, String key) {
+        for (int index = 0; index < queue.size(); index++) {
+            if (key.equals(queue.get(index).mediaId)) return index;
+        }
+        return -1;
+    }
+
     private void chooseSong() {
-        List<MediaItem> queue = catalog.tracksIn(selectedAlbum);
+        List<MediaItem> queue = catalog.tracksIn(selectedAlbums);
         String[] titles = new String[queue.size()];
         for (int index = 0; index < queue.size(); index++) {
             MediaItem item = queue.get(index);
-            titles[index] = selectedAlbum == null
-                    ? item.mediaMetadata.title + " · " + item.mediaMetadata.albumTitle
-                    : String.valueOf(item.mediaMetadata.title);
+            titles[index] = item.mediaMetadata.title + " · " + item.mediaMetadata.albumTitle;
         }
         new AlertDialog.Builder(this)
                 .setTitle("Song auswählen")
                 .setItems(titles, (dialog, index) -> start(queue, index))
                 .show();
+    }
+
+    private void playLibrarySong(MediaItem item) {
+        if (item == null) return;
+        List<MediaItem> queue = catalog.tracksIn(selectedAlbums);
+        int index = indexOf(queue, item.mediaId);
+        if (index >= 0) start(queue, index);
+    }
+
+    private void playSebiSoundtrack() {
+        if (sebiSong == null) return;
+        saveAlbums(Collections.singleton(String.valueOf(sebiSong.mediaMetadata.albumTitle)));
+        playLibrarySong(sebiSong);
+        render();
     }
 
     private void start(List<MediaItem> queue, int index) {
@@ -212,7 +294,7 @@ public final class PlayerActivity extends Activity {
     private void togglePlayback() {
         if (player == null) return;
         if (player.getMediaItemCount() == 0) {
-            if (catalog != null) start(catalog.tracksIn(selectedAlbum), 0);
+            if (catalog != null) start(catalog.tracksIn(selectedAlbums), 0);
         } else if (player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED
                 && player.getPlayerError() == null) {
             player.pause();
@@ -235,7 +317,7 @@ public final class PlayerActivity extends Activity {
             play.setImageResource(playIcon);
             play.setTag(playIcon);
         }
-        previous.setEnabled(hasTrack && player.hasPreviousMediaItem());
+        previous.setEnabled(hasTrack && player.isCommandAvailable(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM));
         next.setEnabled(hasTrack && player.hasNextMediaItem());
         repeat.setEnabled(ready);
         shuffle.setEnabled(ready);
@@ -244,18 +326,32 @@ public final class PlayerActivity extends Activity {
             shuffle.setSelected(player.getShuffleModeEnabled());
         }
         albums.setEnabled(catalog != null);
-        albums.setText(selectedAlbum == null ? "Alle Alben" : selectedAlbum);
-        List<MediaItem> visible = catalog == null ? Collections.emptyList() : catalog.tracksIn(selectedAlbum);
+        List<String> activeAlbums = new ArrayList<>();
+        if (catalog != null) {
+            for (String name : catalog.albums) if (selectedAlbums.contains(name)) activeAlbums.add(name);
+        }
+        albums.setText(activeAlbums.isEmpty() ? "Alle Alben" : activeAlbums.size() == 1
+                ? activeAlbums.get(0) : activeAlbums.size() + " Alben ausgewählt");
+        List<MediaItem> visible = catalog == null ? Collections.emptyList() : catalog.tracksIn(selectedAlbums);
         libraryCount.setText(visible.isEmpty() ? "" : visible.size() + (visible.size() == 1 ? " Song" : " Songs"));
         songs.setEnabled(ready && !visible.isEmpty());
-        retry.setVisibility(catalog == null && !loadingCatalog ? Button.VISIBLE : Button.GONE);
+        retry.setEnabled(!loadingCatalog);
+        catalogStatus.setText(loadingCatalog ? "Mediathek wird aktualisiert …" : catalogRefreshFailed
+                ? (catalog == null ? "Abruf fehlgeschlagen" : "Abruf fehlgeschlagen · gespeicherte Mediathek") : "");
+        catalogStatus.setVisibility(loadingCatalog || catalogRefreshFailed ? TextView.VISIBLE : TextView.GONE);
+        MediaItem latest = catalog == null ? null : catalog.newest;
+        boolean showNewest = latest != null && indexOf(visible, latest.mediaId) >= 0;
+        newest.setVisibility(showNewest ? Button.VISIBLE : Button.GONE);
+        newest.setEnabled(ready);
+        if (showNewest) newest.setText("Neu in der Mediathek · " + latest.mediaMetadata.title);
+        sebiSoundtrack.setVisibility(sebiSong == null ? Button.GONE : Button.VISIBLE);
+        sebiSoundtrack.setEnabled(ready);
 
         MediaItem item = hasTrack ? player.getCurrentMediaItem() : null;
         MediaItem displayed = item != null || visible.isEmpty() ? item : visible.get(0);
         track.setText(displayed == null ? "Schwafelpatie FM" : displayed.mediaMetadata.title);
         album.setText(displayed == null ? "" : displayed.mediaMetadata.albumTitle);
-        boolean inAlbum = displayed != null && (selectedAlbum == null
-                || selectedAlbum.contentEquals(displayed.mediaMetadata.albumTitle));
+        boolean inAlbum = displayed != null && indexOf(visible, displayed.mediaId) >= 0;
         songs.setText(inAlbum ? displayed.mediaMetadata.title : "Song auswählen");
         showArtwork(displayed == null ? null : displayed.mediaMetadata.artworkUri);
         boolean playing = hasTrack && player.isPlaying();
@@ -429,10 +525,21 @@ public final class PlayerActivity extends Activity {
         library.addView(libraryHeader);
         albums = field("Alle Alben", this::chooseAlbum);
         songs = field("Song auswählen", this::chooseSong);
-        retry = field("Mediathek erneut laden", this::loadCatalog);
-        addField(library, "Album", albums);
+        retry = field("Mediathek aktualisieren", this::loadCatalog);
+        catalogStatus = label("", 12, MUTED, false);
+        newest = field("Neu in der Mediathek", () -> playLibrarySong(catalog.newest));
+        newest.setSingleLine(false);
+        sebiSoundtrack = field("Die Hymne starten · Sebi-Album öffnen", this::playSebiSoundtrack);
+        sebiSoundtrack.setSingleLine(false);
+        addField(library, "Alben", albums);
         addField(library, "Song", songs);
+        addField(library, "", newest);
+        library.addView(catalogStatus);
         library.addView(retry);
+        LinearLayout spotlight = card(body, 12);
+        spotlight.addView(label("Sebi ist schuld", 20, INK, true));
+        spotlight.addView(label("Hier ist der passende Soundtrack. Mit Rock, Austropop, Pop-Jazz und der Katastrophensuite.", 14, MUTED, false));
+        spotlight.addView(sebiSoundtrack);
         return scroll;
     }
 
