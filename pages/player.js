@@ -21,6 +21,7 @@ const songList = document.getElementById('songList');
 const songRowTemplate = document.getElementById('songRowTemplate');
 const libraryEmpty = document.getElementById('libraryEmpty');
 const player = document.getElementById('player');
+const mediaSession = navigator.mediaSession;
 const cover = document.getElementById('cover');
 const metaTitle = document.getElementById('meta-title');
 const metaAlbum = document.getElementById('meta-album');
@@ -79,6 +80,7 @@ let selectedAlbums = [];
 let currentSong;
 let shuffle = false;
 let repeat = false;
+let hasPlayed = false;
 const previousSongs = [];
 const upcomingSongs = [];
 let shareTimer;
@@ -175,13 +177,20 @@ function selectSong(song, autoplay = true, remember = true) {
   updateTime();
   updatePlaybackState();
 
-  if ('mediaSession' in navigator && 'MediaMetadata' in window) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: song.title,
-      artist: 'Schwafelpatie FM',
-      album: song.album,
-      artwork: [{ src: new URL(song.cover, document.baseURI).href }],
-    });
+  if (mediaSession && 'MediaMetadata' in window) {
+    try {
+      mediaSession.metadata = new MediaMetadata({
+        title: song.title,
+        artist: 'Schwafelpatie FM',
+        album: song.album,
+        artwork: [{
+          src: new URL(song.cover, document.baseURI).href,
+          type: song.cover.endsWith('.png') ? 'image/png' : 'image/jpeg',
+        }],
+      });
+    } catch {
+      // Optional media metadata must never prevent playback.
+    }
   }
   if (autoplay) play();
 }
@@ -252,6 +261,9 @@ function updateTime() {
 
 function updatePlaybackState() {
   const playing = !player.paused && !player.ended && !player.error;
+  if (mediaSession) {
+    mediaSession.playbackState = !hasPlayed || player.ended || player.error ? 'none' : playing ? 'playing' : 'paused';
+  }
   const label = playing ? 'Pausieren' : 'Abspielen';
   playButton.setAttribute('aria-label', label);
   playButton.title = label;
@@ -321,7 +333,11 @@ progress.addEventListener('input', () => {
 });
 player.addEventListener('durationchange', updateTime);
 player.addEventListener('timeupdate', updateTime);
-for (const event of ['play', 'pause', 'error']) player.addEventListener(event, updatePlaybackState);
+for (const event of ['play', 'pause', 'error', 'ended']) player.addEventListener(event, updatePlaybackState);
+player.addEventListener('playing', () => {
+  hasPlayed = true;
+  updatePlaybackState();
+});
 if (obs) {
   const root = document.documentElement;
   const options = document.getElementById('obsOptions');
@@ -341,7 +357,7 @@ if (obs) {
       showOverlay();
     }
   });
-  for (const event of ['playing', 'waiting']) player.addEventListener(event, updatePlaybackState);
+  player.addEventListener('waiting', updatePlaybackState);
 }
 player.addEventListener('ended', nextSong);
 
@@ -368,7 +384,7 @@ shareButton.addEventListener('click', async () => {
   }
 });
 
-if ('mediaSession' in navigator) {
+if (mediaSession) {
   const actions = {
     play,
     pause: () => player.pause(),
@@ -384,12 +400,29 @@ if ('mediaSession' in navigator) {
   };
   for (const [action, handler] of Object.entries(actions)) {
     try {
-      navigator.mediaSession.setActionHandler(action, handler);
+      mediaSession.setActionHandler(action, handler);
     } catch {
       // Browsers can expose Media Session while supporting only some actions.
     }
   }
 }
+
+// Some browsers deliver multimedia keys to the focused page instead of the media session.
+const mediaKeys = new Map([
+  ['MediaPlayPause', togglePlayback],
+  ['MediaPlay', play],
+  ['MediaPause', () => player.pause()],
+  ['MediaTrackPrevious', previousSong],
+  ['MediaTrackNext', nextSong],
+  ['MediaStop', () => player.pause()],
+]);
+document.addEventListener('keydown', (event) => {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+  const action = mediaKeys.get(event.key);
+  if (!action) return;
+  event.preventDefault();
+  if (!event.repeat) action();
+});
 
 applyAlbums(loadAlbums(), false);
 const requestedSong = params.get('song');
