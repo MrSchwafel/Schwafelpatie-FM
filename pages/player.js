@@ -36,8 +36,38 @@ const shareLabel = document.getElementById('shareLabel');
 const previousButton = document.getElementById('prevBtn');
 const newestButton = document.getElementById('newestSongBtn');
 const sebiButton = document.getElementById('sebiSoundtrack');
+const appDownload = document.getElementById('appDownload');
 const sebiSong = allSongs.find((song) => song.key === 'sebi-ist-schuld-die-hymne-des-gescheiterten-fortschritts');
 const filterKey = obs ? `schwafelpatie:obs:albums:${params.get('profile')?.trim() || 'standard'}` : 'schwafelpatie:web:albums';
+
+appDownload?.addEventListener('click', async (event) => {
+  if (location.protocol === 'file:') return;
+  event.preventDefault();
+  if (appDownload.getAttribute('aria-busy') === 'true') return;
+  appDownload.setAttribute('aria-busy', 'true');
+
+  const timestamp = Date.now();
+  const download = document.createElement('a');
+  download.href = `downloads/Schwafelpatie-FM.apk?t=${timestamp}`;
+  download.download = 'Schwafelpatie-FM.apk';
+  try {
+    const metadata = await fetch(`downloads/latest.json?t=${timestamp}`, {
+      cache: 'no-store', signal: AbortSignal.timeout(4000),
+    });
+    if (metadata.ok) {
+      const { file } = await metadata.json();
+      if (typeof file === 'string' && /^Schwafelpatie-FM-\d+(?:\.\d+)*\.apk$/.test(file)) {
+        download.href = `downloads/${file}`;
+        download.download = file;
+      }
+    }
+  } catch {
+    // The stable download URL also serves the latest release.
+  } finally {
+    appDownload.removeAttribute('aria-busy');
+  }
+  download.click();
+});
 
 let playlist = allSongs;
 let songsByKey = new Map();

@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -22,7 +23,10 @@ import android.os.Looper;
 import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.Button;
@@ -77,12 +81,13 @@ public final class PlayerActivity extends Activity {
     private Uri artwork;
     private ListenableFuture<MediaController> connection;
     private MediaController player;
-    private TextView status, track, album, elapsed, durationLabel, libraryCount, catalogStatus;
+    private TextView status, track, album, elapsed, durationLabel, catalogStatus;
     private GradientDrawable statusDot;
     private ImageView cover;
     private SeekBar seek;
     private ImageButton play, previous, next, shuffle, repeat;
-    private Button albums, songs, retry, newest, sebiSoundtrack;
+    private Button albums, songs, retry, newest, sebiSoundtrack, libraryButton;
+    private AlertDialog libraryDialog;
     private MediaItem sebiSong;
 
     private final Player.Listener listener = new Player.Listener() {
@@ -141,6 +146,7 @@ public final class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        libraryDialog.dismiss();
         network.shutdownNow();
         super.onDestroy();
     }
@@ -266,7 +272,10 @@ public final class PlayerActivity extends Activity {
         }
         new AlertDialog.Builder(this)
                 .setTitle("Song auswählen")
-                .setItems(titles, (dialog, index) -> start(queue, index))
+                .setItems(titles, (dialog, index) -> {
+                    libraryDialog.dismiss();
+                    start(queue, index);
+                })
                 .show();
     }
 
@@ -333,7 +342,8 @@ public final class PlayerActivity extends Activity {
         albums.setText(activeAlbums.isEmpty() ? "Alle Alben" : activeAlbums.size() == 1
                 ? activeAlbums.get(0) : activeAlbums.size() + " Alben ausgewählt");
         List<MediaItem> visible = catalog == null ? Collections.emptyList() : catalog.tracksIn(selectedAlbums);
-        libraryCount.setText(visible.isEmpty() ? "" : visible.size() + (visible.size() == 1 ? " Song" : " Songs"));
+        libraryButton.setText(visible.isEmpty() ? "Mediathek" : "Mediathek · " + visible.size()
+                + (visible.size() == 1 ? " Song" : " Songs"));
         songs.setEnabled(ready && !visible.isEmpty());
         retry.setEnabled(!loadingCatalog);
         catalogStatus.setText(loadingCatalog ? "Mediathek wird aktualisiert …" : catalogRefreshFailed
@@ -344,8 +354,7 @@ public final class PlayerActivity extends Activity {
         newest.setVisibility(showNewest ? Button.VISIBLE : Button.GONE);
         newest.setEnabled(ready);
         if (showNewest) newest.setText("Neu in der Mediathek · " + latest.mediaMetadata.title);
-        sebiSoundtrack.setVisibility(sebiSong == null ? Button.GONE : Button.VISIBLE);
-        sebiSoundtrack.setEnabled(ready);
+        sebiSoundtrack.setEnabled(ready && sebiSong != null);
 
         MediaItem item = hasTrack ? player.getCurrentMediaItem() : null;
         MediaItem displayed = item != null || visible.isEmpty() ? item : visible.get(0);
@@ -420,11 +429,24 @@ public final class PlayerActivity extends Activity {
                 return window;
             });
         }
+        Configuration config = getResources().getConfiguration();
+        boolean wide = config.screenWidthDp >= 540 && config.screenHeightDp < 500;
         LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(12), dp(18), dp(12), dp(24));
-        int width = getResources().getConfiguration().screenWidthDp >= 600 ? dp(520) : ViewGroup.LayoutParams.MATCH_PARENT;
+        body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        body.setGravity(Gravity.CENTER_VERTICAL);
+        body.setPadding(dp(14), dp(12), dp(14), dp(12));
+        int width = wide ? ViewGroup.LayoutParams.MATCH_PARENT : config.screenWidthDp >= 600
+                ? dp(520) : ViewGroup.LayoutParams.MATCH_PARENT;
         scroll.addView(body, new ScrollView.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL));
+
+        LinearLayout station = body;
+        if (wide) {
+            station = new LinearLayout(this);
+            station.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams column = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            column.setMarginEnd(dp(12));
+            body.addView(station, column);
+        }
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -438,23 +460,38 @@ public final class PlayerActivity extends Activity {
         String name = "Schwafelpatie FM";
         SpannableString brand = new SpannableString(name);
         brand.setSpan(new ForegroundColorSpan(ACCENT), name.length() - 2, name.length(), 0);
-        TextView heading = label("", 27, INK, true);
+        TextView heading = label("", 25, INK, true);
         heading.setText(brand);
         heading.setLetterSpacing(-.05f);
-        header.addView(heading);
-        body.addView(header);
+        header.addView(heading, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        station.addView(header);
 
-        LinearLayout deck = card(body, 18);
+        sebiSoundtrack = soundtrackButton();
+        addWithTopMargin(station, sebiSoundtrack, 10);
+
+        LinearLayout deck = new LinearLayout(this);
+        deck.setOrientation(LinearLayout.VERTICAL);
+        deck.setBackground(shape(SURFACE, 18, BORDER));
+        deck.setPadding(dp(12), dp(12), dp(12), dp(8));
+        if (wide) body.addView(deck, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        else addWithTopMargin(body, deck, 10);
+
+        LinearLayout nowPlaying = new LinearLayout(this);
+        nowPlaying.setGravity(Gravity.CENTER_VERTICAL);
+        deck.addView(nowPlaying);
 
         cover = new ImageView(this);
         cover.setImageResource(R.drawable.ic_station);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         cover.setBackground(shape(RAISED, 12, BORDER));
         cover.setClipToOutline(true);
-        LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(dp(204), dp(204));
-        art.gravity = Gravity.CENTER_HORIZONTAL;
-        art.bottomMargin = dp(16);
-        deck.addView(cover, art);
+        int coverSize = dp(config.screenHeightDp >= 650 ? 80 : 56);
+        LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(coverSize, coverSize);
+        art.setMarginEnd(dp(10));
+        nowPlaying.addView(cover, art);
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        nowPlaying.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         LinearLayout state = new LinearLayout(this);
         state.setGravity(Gravity.CENTER_VERTICAL);
         statusDot = shape(0xff8c7e6e, 4, Color.TRANSPARENT);
@@ -467,13 +504,17 @@ public final class PlayerActivity extends Activity {
         status.setAllCaps(true);
         status.setLetterSpacing(.11f);
         state.addView(status);
-        deck.addView(state);
-        track = label("", 25, INK, true);
+        details.addView(state);
+        track = label("", 19, INK, true);
         track.setLetterSpacing(-.035f);
-        track.setPadding(0, dp(5), 0, 0);
-        album = label("", 14, MUTED, false);
-        deck.addView(track);
-        deck.addView(album);
+        track.setMaxLines(2);
+        track.setEllipsize(TextUtils.TruncateAt.END);
+        track.setPadding(0, dp(3), 0, 0);
+        album = label("", 13, MUTED, false);
+        album.setSingleLine(true);
+        album.setEllipsize(TextUtils.TruncateAt.END);
+        details.addView(track);
+        details.addView(album);
 
         seek = new SeekBar(this);
         seek.setMax(SEEK_STEPS);
@@ -509,38 +550,63 @@ public final class PlayerActivity extends Activity {
                 player.getRepeatMode() == Player.REPEAT_MODE_ONE ? Player.REPEAT_MODE_OFF : Player.REPEAT_MODE_ONE));
         LinearLayout controls = new LinearLayout(this);
         controls.setGravity(Gravity.CENTER);
-        controls.setPadding(0, dp(12), 0, 0);
+        controls.setPadding(0, dp(4), 0, 0);
         for (ImageButton button : new ImageButton[]{shuffle, previous, play, next, repeat}) {
-            int size = dp(button == play ? 56 : 44);
-            controls.addView(button, new LinearLayout.LayoutParams(size, size));
+            int size = dp(button == play ? 52 : 48);
+            controls.addView(button, wide ? new LinearLayout.LayoutParams(0, size, 1)
+                    : new LinearLayout.LayoutParams(size, size));
         }
         deck.addView(controls);
 
-        LinearLayout library = card(body, 12);
-        LinearLayout libraryHeader = new LinearLayout(this);
-        libraryHeader.setGravity(Gravity.CENTER_VERTICAL);
-        libraryHeader.addView(label("Mediathek", 20, INK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        libraryCount = label("", 12, MUTED, false);
-        libraryHeader.addView(libraryCount);
-        library.addView(libraryHeader);
+        libraryDialog = buildLibraryDialog();
+        libraryButton = field("Mediathek", () -> libraryDialog.show());
+        addWithTopMargin(station, libraryButton, 10);
+        return scroll;
+    }
+
+    private Button soundtrackButton() {
+        String title = "Sebas ist schuld.";
+        String action = "Soundtrack starten";
+        String text = title + "\nWegen ihm mache ich KI-Musik.\n" + action;
+        SpannableString copy = new SpannableString(text);
+        copy.setSpan(new RelativeSizeSpan(1.4f), 0, title.length(), 0);
+        copy.setSpan(new ForegroundColorSpan(ACCENT), 0, title.length(), 0);
+        copy.setSpan(new StyleSpan(Typeface.BOLD), 0, title.length(), 0);
+        copy.setSpan(new StyleSpan(Typeface.BOLD), text.length() - action.length(), text.length(), 0);
+        Button button = field("", this::playSebiSoundtrack);
+        button.setSingleLine(false);
+        button.setText(copy);
+        button.setTextSize(14);
+        button.setPadding(dp(14), dp(8), dp(12), dp(8));
+        Drawable icon = getDrawable(R.drawable.ic_play).mutate();
+        icon.setTint(ACCENT);
+        button.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, icon, null);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x35ffc46c), shape(0xff49311e, 14, 0xffaa753a), null));
+        return button;
+    }
+
+    private AlertDialog buildLibraryDialog() {
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout library = new LinearLayout(this);
+        library.setOrientation(LinearLayout.VERTICAL);
+        library.setPadding(dp(20), 0, dp(20), dp(8));
+        scroll.addView(library);
         albums = field("Alle Alben", this::chooseAlbum);
         songs = field("Song auswählen", this::chooseSong);
         retry = field("Mediathek aktualisieren", this::loadCatalog);
         catalogStatus = label("", 12, MUTED, false);
-        newest = field("Neu in der Mediathek", () -> playLibrarySong(catalog.newest));
+        newest = field("Neu in der Mediathek", () -> {
+            libraryDialog.dismiss();
+            playLibrarySong(catalog.newest);
+        });
         newest.setSingleLine(false);
-        sebiSoundtrack = field("Die Hymne starten · Sebi-Album öffnen", this::playSebiSoundtrack);
-        sebiSoundtrack.setSingleLine(false);
         addField(library, "Alben", albums);
         addField(library, "Song", songs);
-        addField(library, "", newest);
+        addWithTopMargin(library, newest, 8);
         library.addView(catalogStatus);
-        library.addView(retry);
-        LinearLayout spotlight = card(body, 12);
-        spotlight.addView(label("Sebi ist schuld", 20, INK, true));
-        spotlight.addView(label("Hier ist der passende Soundtrack. Mit Rock, Austropop, Pop-Jazz und der Katastrophensuite.", 14, MUTED, false));
-        spotlight.addView(sebiSoundtrack);
-        return scroll;
+        addWithTopMargin(library, retry, 8);
+        return new AlertDialog.Builder(this).setTitle("Mediathek").setView(scroll)
+                .setPositiveButton("Schließen", null).create();
     }
 
     private void seekTo(int value) {
@@ -601,15 +667,10 @@ public final class PlayerActivity extends Activity {
         }, new int[]{0xff8c7e6e, BACKGROUND, normal});
     }
 
-    private LinearLayout card(LinearLayout body, int margin) {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(shape(SURFACE, 20, BORDER));
-        card.setPadding(dp(18), dp(18), dp(18), dp(18));
+    private void addWithTopMargin(LinearLayout parent, View child, int margin) {
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         size.topMargin = dp(margin);
-        body.addView(card, size);
-        return card;
+        parent.addView(child, size);
     }
 
     private void addField(LinearLayout library, String name, Button field) {

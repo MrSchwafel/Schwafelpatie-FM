@@ -45,13 +45,22 @@
 </section>
 
 <div class="shell">
-    <header class="station">
-        <img class="station-mark" src="assets/logo.svg" alt="" width="48" height="48">
-        <h1>Schwafelpatie<span> FM</span></h1>
-        <?php if ($apkVersion !== null): ?>
-        <a class="share app-download" href="<?=htmlspecialchars($androidApk)?>?v=<?=$apkVersion?>" download="Schwafelpatie-FM-<?=htmlspecialchars($androidRelease)?>.apk">Android-App <span>APK <?=htmlspecialchars($androidRelease)?> herunterladen</span></a>
+    <div class="station-intro">
+        <header class="station">
+            <img class="station-mark" src="assets/logo.svg" alt="" width="48" height="48">
+            <h1>Schwafelpatie<span> FM</span></h1>
+        </header>
+        <button type="button" class="soundtrack" id="sebiSoundtrack" hidden>
+            <span class="soundtrack-copy">
+                <strong>Sebas ist schuld.</strong>
+                <span>Wegen ihm mache ich KI-Musik. Hier ist der passende Soundtrack.</span>
+            </span>
+            <span class="soundtrack-play"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg> Soundtrack starten</span>
+        </button>
+        <?php if ($androidApk !== null): ?>
+        <a class="share app-download" id="appDownload" href="<?=htmlspecialchars($androidApk)?>" download="<?=htmlspecialchars($apkName)?>">Android-App <span>Aktuelle APK herunterladen</span></a>
         <?php endif; ?>
-    </header>
+    </div>
     <div class="obs-toolbar">
         <strong>OBS-Steuerung</strong>
         <button class="share" type="button" id="obsClose">Overlay anzeigen</button>
@@ -124,14 +133,6 @@
                 </span>
             </button>
             <?php endif; ?>
-            <button type="button" class="latest" id="sebiSoundtrack" hidden>
-                <span class="latest-icon"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></span>
-                <span class="latest-copy">
-                    <span class="latest-label">Sebi ist schuld · Hier ist der passende Soundtrack</span>
-                    <strong>Die Hymne starten</strong>
-                    <span>Öffnet das Sebi-Album mit Rock, Austropop, Pop-Jazz und der Katastrophensuite.</span>
-                </span>
-            </button>
         </section>
     </main>
 

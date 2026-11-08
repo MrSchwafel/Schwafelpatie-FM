@@ -86,12 +86,19 @@ $assets['default-cover.jpg'] = true;
 $assets['assets/logo.svg'] = true;
 $assets['pages/player.js'] = true;
 $assets['pages/player.css'] = true;
-$androidApk = 'downloads/Schwafelpatie-FM.apk';
-$androidRelease = '1.2';
-$apkVersion = null;
-if (is_file("$root/$androidApk")) {
+$apkReleases = [];
+foreach (glob("$root/downloads/Schwafelpatie-FM-*.apk") ?: [] as $file) {
+    $name = basename($file);
+    if (is_file($file) && preg_match('/^Schwafelpatie-FM-([0-9]+(?:\.[0-9]+)*)\.apk$/D', $name, $matches)) {
+        $apkReleases[$matches[1]] = $name;
+    }
+}
+uksort($apkReleases, 'version_compare');
+$apkName = end($apkReleases);
+$androidApk = $apkName === false ? null : "downloads/$apkName";
+$apkMetadata = $androidApk === null ? null : json_encode(['file' => $apkName], JSON_THROW_ON_ERROR);
+if ($androidApk !== null) {
     $assets[$androidApk] = true;
-    $apkVersion = substr(hash_file('sha256', "$root/$androidApk"), 0, 16);
 }
 foreach ($keys as $key => $path) {
     $album = basename(dirname($path));
@@ -133,6 +140,9 @@ require "$root/pages/player.php";
 $html = ob_get_clean();
 
 $totalBytes = strlen($html) + strlen($catalogJson);
+if ($androidApk !== null) {
+    $totalBytes += filesize("$root/$androidApk") + strlen($apkMetadata);
+}
 foreach (array_keys($assets) as $path) {
     if (!is_file("$root/$path")) {
         throw new RuntimeException("Datei fehlt: $path");
@@ -145,6 +155,12 @@ if ($totalBytes >= 1_000_000_000) {
 
 foreach (array_keys($assets) as $path) {
     copyAsset($root, $output, $path);
+}
+if ($androidApk !== null && (
+    !copy("$output/$androidApk", "$output/downloads/Schwafelpatie-FM.apk")
+    || file_put_contents("$output/downloads/latest.json", $apkMetadata) === false
+)) {
+    throw new RuntimeException('Der Android-Download konnte nicht veröffentlicht werden.');
 }
 if (file_put_contents("$output/index.html", $html) === false) {
     throw new RuntimeException('index.html konnte nicht geschrieben werden.');
