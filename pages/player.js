@@ -16,6 +16,10 @@ const albumDialog = document.getElementById('albumDialog');
 const albumSummary = document.getElementById('albumSummary');
 const albumCheckboxes = [...albumDialog.querySelectorAll('input[name="album"]')];
 const songSelector = document.getElementById('songSelector');
+const songSearch = document.getElementById('songSearch');
+const songList = document.getElementById('songList');
+const songRowTemplate = document.getElementById('songRowTemplate');
+const libraryEmpty = document.getElementById('libraryEmpty');
 const player = document.getElementById('player');
 const cover = document.getElementById('cover');
 const metaTitle = document.getElementById('meta-title');
@@ -101,17 +105,52 @@ function applyAlbums(selection, save = true) {
   playlist = selectedAlbums.length ? allSongs.filter((song) => selectedAlbums.includes(song.album)) : allSongs;
   songsByKey = new Map(playlist.map((song) => [song.key, song]));
   albumSummary.textContent = selectedAlbums.length > 1 ? `${selectedAlbums.length} Alben ausgewählt` : selectedAlbums[0] ?? 'Alle Alben';
-  trackCount.textContent = `${playlist.length} ${playlist.length === 1 ? 'Song' : 'Songs'}`;
-  const placeholder = new Option('Song auswählen …', '');
-  placeholder.disabled = true;
-  songSelector.replaceChildren(placeholder, ...playlist.map((song) => new Option(
-    selectedAlbums.length === 1 ? song.title : `${song.album} - ${song.title}`, song.key,
-  )));
-  songSelector.disabled = false;
-  songSelector.value = songsByKey.has(currentSong?.key) ? currentSong.key : '';
+  if (obs) {
+    const placeholder = new Option('Song auswählen …', '');
+    placeholder.disabled = true;
+    songSelector.replaceChildren(placeholder, ...playlist.map((song) => new Option(
+      selectedAlbums.length === 1 ? song.title : `${song.album} - ${song.title}`, song.key,
+    )));
+    songSelector.disabled = false;
+  } else {
+    renderSongList();
+  }
+  updateLibrarySelection();
   player.loop = repeat && songsByKey.has(currentSong?.key);
-  if (newestButton) newestButton.hidden = !songsByKey.has(newestSong?.key);
   updatePreviousButton();
+}
+
+function renderSongList() {
+  const query = songSearch.value.trim().toLocaleLowerCase('de');
+  const results = playlist.filter((song) => `${song.title} ${song.album}`.toLocaleLowerCase('de').includes(query));
+  const rows = document.createDocumentFragment();
+  for (const song of results) {
+    const row = songRowTemplate.content.cloneNode(true);
+    const button = row.querySelector('button');
+    button.dataset.song = song.key;
+    button.querySelector('img').src = song.cover;
+    button.querySelector('strong').textContent = song.title;
+    button.querySelector('.song-row-copy span').textContent = song.album;
+    rows.append(row);
+  }
+  songList.replaceChildren(rows);
+  songList.scrollTop = 0;
+  libraryEmpty.hidden = results.length > 0;
+  trackCount.textContent = query ? `${results.length} von ${playlist.length} Songs`
+    : `${playlist.length} ${playlist.length === 1 ? 'Song' : 'Songs'}`;
+}
+
+function updateLibrarySelection() {
+  if (obs) {
+    songSelector.value = songsByKey.has(currentSong?.key) ? currentSong.key : '';
+    return;
+  }
+  if (newestButton && newestSong.key === currentSong?.key) newestButton.setAttribute('aria-current', 'true');
+  else newestButton?.removeAttribute('aria-current');
+  for (const row of songList.querySelectorAll('.song-row')) {
+    if (row.dataset.song === currentSong?.key) row.setAttribute('aria-current', 'true');
+    else row.removeAttribute('aria-current');
+  }
 }
 
 function selectSong(song, autoplay = true, remember = true) {
@@ -122,7 +161,7 @@ function selectSong(song, autoplay = true, remember = true) {
   }
   currentSong = song;
   player.loop = repeat && songsByKey.has(song.key);
-  songSelector.value = songsByKey.has(song.key) ? song.key : '';
+  updateLibrarySelection();
   updatePreviousButton();
   player.src = song.file;
   cover.src = song.cover;
@@ -253,6 +292,14 @@ albumDialog.addEventListener('close', () => {
   }
 });
 songSelector.addEventListener('change', () => selectSong(songsByKey.get(songSelector.value)));
+songSearch.addEventListener('input', () => {
+  renderSongList();
+  updateLibrarySelection();
+});
+songList.addEventListener('click', (event) => {
+  const row = event.target.closest('.song-row');
+  if (row) selectSong(songsByKey.get(row.dataset.song));
+});
 previousButton.addEventListener('click', previousSong);
 document.getElementById('nextBtn').addEventListener('click', nextSong);
 playButton.addEventListener('click', togglePlayback);
@@ -298,7 +345,7 @@ if (obs) {
 }
 player.addEventListener('ended', nextSong);
 
-newestButton?.addEventListener('click', () => selectSong(songsByKey.get(newestSong.key)));
+newestButton?.addEventListener('click', () => selectSong(newestSong));
 sebiButton.hidden = !sebiSong || Boolean(obs);
 sebiButton.addEventListener('click', () => {
   if (!sebiSong) return;

@@ -24,6 +24,8 @@
     <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 9h4l4-4v14l-4-4H4Zm11-1a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
     <symbol id="icon-link" viewBox="0 0 24 24"><path d="m10 13 4-4m-6 1 3-3a4 4 0 0 1 6 6l-2 2m1-1-3 3a4 4 0 0 1-6-6l2-2"/></symbol>
     <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="var(--surface)"/><circle cx="15" cy="17" r="2.5" fill="var(--surface)"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
 </svg>
 
 <section class="obs-banner" id="obsBanner" aria-label="OBS-Musikanzeige">
@@ -108,40 +110,72 @@
 
         <section class="library" aria-labelledby="libraryTitle">
             <div class="library-header">
-                <h2 id="libraryTitle">Mediathek</h2>
-                <p id="trackCount"><?=count($allSongs)?> Songs</p>
+                <div>
+                    <h2 id="libraryTitle">Mediathek</h2>
+                    <p>Durchsuche die Songs oder wähle die Alben für deine Wiedergabe.</p>
+                </div>
+                <p class="library-count" id="trackCount" role="status"><?=count($allSongs)?> Songs</p>
             </div>
+
+            <?php if ($newestSong): ?>
+            <button type="button" class="latest" id="newestSongBtn">
+                <img class="latest-art" src="<?=htmlspecialchars($newestSong['cover'])?>" alt="" width="64" height="64">
+                <span class="latest-copy">
+                    <span class="latest-label">Neu in der Mediathek</span>
+                    <strong><?=htmlspecialchars($newestSong['title'])?></strong>
+                    <span class="latest-album"><?=htmlspecialchars($newestSong['album'])?></span>
+                </span>
+                <span class="latest-icon"><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></span>
+            </button>
+            <?php endif; ?>
+
             <div class="library-fields">
                 <div class="field">
                     <label id="albumLabel">Alben</label>
-                    <button type="button" class="album-picker" id="albumSelector" aria-labelledby="albumLabel albumSummary"><span id="albumSummary">Alle Alben</span></button>
+                    <button type="button" class="album-picker" id="albumSelector" aria-labelledby="albumLabel albumSummary" aria-haspopup="dialog">
+                        <svg class="icon filter-icon" aria-hidden="true"><use href="#icon-settings"/></svg>
+                        <span id="albumSummary">Alle Alben</span>
+                        <svg class="icon filter-chevron" aria-hidden="true"><use href="#icon-chevron"/></svg>
+                    </button>
                 </div>
-                <div class="field">
+                <div class="field library-search">
+                    <label for="songSearch">Suche</label>
+                    <div class="search-box">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-search"/></svg>
+                        <input type="search" id="songSearch" placeholder="Titel oder Album suchen" autocomplete="off" spellcheck="false">
+                    </div>
+                </div>
+                <div class="field obs-song-field">
                     <label for="songSelector">Song</label>
                     <select id="songSelector" disabled>
                         <option>Song auswählen …</option>
                     </select>
                 </div>
             </div>
-
-            <?php if ($newestSong): ?>
-            <button type="button" class="latest" id="newestSongBtn">
-                <span class="latest-icon"><svg class="icon"><use href="#icon-play"/></svg></span>
-                <span class="latest-copy">
-                    <span class="latest-label">Neu in der Mediathek</span>
-                    <strong><?=htmlspecialchars($newestSong['title'])?></strong>
-                </span>
-            </button>
-            <?php endif; ?>
+            <div class="library-results">
+                <ul id="songList" aria-label="Songs"></ul>
+                <p class="library-empty" id="libraryEmpty" hidden>Keine passenden Songs. Probiere einen anderen Suchbegriff oder ändere die Albumauswahl.</p>
+            </div>
         </section>
     </main>
 
     <footer>&copy; <?=date('Y')?> Schwafelpatie &amp; Suno AI <span aria-hidden="true">·</span> <a href="?player=OBS">OBS-Overlay</a></footer>
 </div>
 
+<template id="songRowTemplate">
+    <li>
+        <button class="song-row" type="button">
+            <img class="song-row-art" alt="" loading="lazy" width="40" height="40">
+            <span class="song-row-copy"><strong></strong><span></span></span>
+            <svg class="icon song-row-play" aria-hidden="true"><use href="#icon-play"/></svg>
+        </button>
+    </li>
+</template>
+
 <dialog id="albumDialog" aria-labelledby="albumDialogTitle">
     <form method="dialog">
         <h2 id="albumDialogTitle">Alben zum Hören auswählen</h2>
+        <p class="album-hint">Die Auswahl bestimmt, welche Songs in der Wiedergabe landen.</p>
         <div class="album-list">
             <?php foreach ($albumKeys as $albumName): ?>
             <label><input type="checkbox" name="album" value="<?=htmlspecialchars($albumName)?>"> <?=htmlspecialchars($albumName)?></label>
