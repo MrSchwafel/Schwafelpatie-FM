@@ -49,7 +49,7 @@
         <img class="station-mark" src="assets/logo.svg" alt="" width="48" height="48">
         <h1>Schwafelpatie<span> FM</span></h1>
         <?php if ($apkVersion !== null): ?>
-        <a class="share app-download" href="<?=htmlspecialchars($androidApk)?>?v=<?=$apkVersion?>" download>Android-App <span>APK herunterladen</span></a>
+        <a class="share app-download" href="<?=htmlspecialchars($androidApk)?>?v=<?=$apkVersion?>" download="Schwafelpatie-FM-<?=htmlspecialchars($androidRelease)?>.apk">Android-App <span>APK <?=htmlspecialchars($androidRelease)?> herunterladen</span></a>
         <?php endif; ?>
     </header>
     <div class="obs-toolbar">

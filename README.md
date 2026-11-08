@@ -40,4 +40,4 @@ Bereits geladene Audioteile landen in einem Cache von bis zu 256 MiB. Vollständ
 
 Die App benötigt Android 8.0 oder neuer. Das Projekt lässt sich mit Android Studio, JDK 17 oder neuer und Android SDK 37 bauen. Mit eingerichtetem SDK erzeugt `.\android\gradlew.bat -p android :app:assembleDebug` unter Windows eine installierbare Test-APK unter `android/app/build/outputs/apk/debug/`.
 
-GitHub Pages übernimmt `downloads/Schwafelpatie-FM.apk` in den Website-Build. Für eine neue Version die APK dort ersetzen und für Updates dieselbe Signatur wie bei der vorherigen APK verwenden.
+GitHub Pages übernimmt `downloads/Schwafelpatie-FM.apk` in den Website-Build. Für eine neue Version die APK dort ersetzen und `$androidRelease` in `scripts/build-pages.php` anpassen. Für Updates dieselbe Signatur wie bei der vorherigen APK verwenden.

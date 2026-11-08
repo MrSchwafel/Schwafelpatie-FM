@@ -87,6 +87,7 @@ $assets['assets/logo.svg'] = true;
 $assets['pages/player.js'] = true;
 $assets['pages/player.css'] = true;
 $androidApk = 'downloads/Schwafelpatie-FM.apk';
+$androidRelease = '1.2';
 $apkVersion = null;
 if (is_file("$root/$androidApk")) {
     $assets[$androidApk] = true;
