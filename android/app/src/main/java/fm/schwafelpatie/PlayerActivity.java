@@ -2,6 +2,7 @@ package fm.schwafelpatie;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ComponentName;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -11,6 +12,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -25,14 +27,21 @@ import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
+import android.util.LruCache;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.widget.BaseAdapter;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.SearchView;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -50,9 +59,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -72,22 +83,28 @@ public final class PlayerActivity extends Activity {
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private final LruCache<Uri, Bitmap> artworkCache = new LruCache<>(8 * 1024 * 1024) {
+        @Override protected int sizeOf(Uri uri, Bitmap bitmap) { return bitmap.getAllocationByteCount(); }
+    };
+    private final Map<Uri, List<ImageView>> artworkRequests = new HashMap<>();
     private Catalog catalog;
     private SharedPreferences preferences;
     private Set<String> selectedAlbums;
     private boolean loadingCatalog;
     private boolean catalogRefreshFailed;
     private boolean scrubbing;
-    private Uri artwork;
     private ListenableFuture<MediaController> connection;
     private MediaController player;
-    private TextView status, track, album, elapsed, durationLabel, catalogStatus;
+    private TextView status, track, album, elapsed, durationLabel, catalogStatus, resultCount;
     private GradientDrawable statusDot;
     private ImageView cover;
     private SeekBar seek;
     private ImageButton play, previous, next, shuffle, repeat;
-    private Button albums, songs, retry, newest, sebiSoundtrack, libraryButton;
-    private AlertDialog libraryDialog;
+    private Button albums, retry, sebiSoundtrack, libraryButton;
+    private SongRow newest;
+    private Dialog libraryDialog;
+    private LibraryAdapter libraryAdapter;
+    private String searchQuery = "";
     private MediaItem sebiSong;
 
     private final Player.Listener listener = new Player.Listener() {
@@ -229,10 +246,7 @@ public final class PlayerActivity extends Activity {
         long position = player.getCurrentPosition();
         if (index < 0) {
             if (player.getPlayWhenReady() && player.getPlaybackState() != Player.STATE_ENDED) {
-                Bundle extras = new Bundle();
-                extras.putBoolean(HistoryPlayer.FINISH_CURRENT, true);
-                queue.add(0, current.buildUpon().setUri(current.requestMetadata.mediaUri).setMediaMetadata(
-                        current.mediaMetadata.buildUpon().setExtras(extras).build()).build());
+                queue.add(0, finishOnce(current));
             } else {
                 position = 0;
             }
@@ -263,27 +277,23 @@ public final class PlayerActivity extends Activity {
         return -1;
     }
 
-    private void chooseSong() {
-        List<MediaItem> queue = catalog.tracksIn(selectedAlbums);
-        String[] titles = new String[queue.size()];
-        for (int index = 0; index < queue.size(); index++) {
-            MediaItem item = queue.get(index);
-            titles[index] = item.mediaMetadata.title + " · " + item.mediaMetadata.albumTitle;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Song auswählen")
-                .setItems(titles, (dialog, index) -> {
-                    libraryDialog.dismiss();
-                    start(queue, index);
-                })
-                .show();
+    private MediaItem finishOnce(MediaItem item) {
+        Bundle extras = new Bundle();
+        extras.putBoolean(HistoryPlayer.FINISH_CURRENT, true);
+        return item.buildUpon().setUri(item.requestMetadata.mediaUri)
+                .setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(extras).build()).build();
     }
 
     private void playLibrarySong(MediaItem item) {
         if (item == null) return;
         List<MediaItem> queue = catalog.tracksIn(selectedAlbums);
         int index = indexOf(queue, item.mediaId);
-        if (index >= 0) start(queue, index);
+        if (index < 0) {
+            queue = new ArrayList<>(queue);
+            queue.add(0, finishOnce(item));
+            index = 0;
+        }
+        start(queue, index);
     }
 
     private void playSebiSoundtrack() {
@@ -344,25 +354,23 @@ public final class PlayerActivity extends Activity {
         List<MediaItem> visible = catalog == null ? Collections.emptyList() : catalog.tracksIn(selectedAlbums);
         libraryButton.setText(visible.isEmpty() ? "Mediathek" : "Mediathek · " + visible.size()
                 + (visible.size() == 1 ? " Song" : " Songs"));
-        songs.setEnabled(ready && !visible.isEmpty());
         retry.setEnabled(!loadingCatalog);
         catalogStatus.setText(loadingCatalog ? "Mediathek wird aktualisiert …" : catalogRefreshFailed
                 ? (catalog == null ? "Abruf fehlgeschlagen" : "Abruf fehlgeschlagen · gespeicherte Mediathek") : "");
         catalogStatus.setVisibility(loadingCatalog || catalogRefreshFailed ? TextView.VISIBLE : TextView.GONE);
         MediaItem latest = catalog == null ? null : catalog.newest;
-        boolean showNewest = latest != null && indexOf(visible, latest.mediaId) >= 0;
-        newest.setVisibility(showNewest ? Button.VISIBLE : Button.GONE);
+        newest.setVisibility(latest != null ? View.VISIBLE : View.GONE);
         newest.setEnabled(ready);
-        if (showNewest) newest.setText("Neu in der Mediathek · " + latest.mediaMetadata.title);
         sebiSoundtrack.setEnabled(ready && sebiSong != null);
 
         MediaItem item = hasTrack ? player.getCurrentMediaItem() : null;
+        String currentId = item == null ? null : item.mediaId;
+        if (latest != null) newest.bind(latest, latest.mediaId.equals(currentId));
+        libraryAdapter.update(visible, currentId, ready);
         MediaItem displayed = item != null || visible.isEmpty() ? item : visible.get(0);
         track.setText(displayed == null ? "Schwafelpatie FM" : displayed.mediaMetadata.title);
         album.setText(displayed == null ? "" : displayed.mediaMetadata.albumTitle);
-        boolean inAlbum = displayed != null && indexOf(visible, displayed.mediaId) >= 0;
-        songs.setText(inAlbum ? displayed.mediaMetadata.title : "Song auswählen");
-        showArtwork(displayed == null ? null : displayed.mediaMetadata.artworkUri);
+        showArtwork(cover, displayed == null ? null : displayed.mediaMetadata.artworkUri);
         boolean playing = hasTrack && player.isPlaying();
         status.setTextColor(playing ? ACCENT : MUTED);
         statusDot.setColor(playing ? ACCENT : 0xff8c7e6e);
@@ -376,26 +384,38 @@ public final class PlayerActivity extends Activity {
         if (!scrubbing) renderPosition();
     }
 
-    private void showArtwork(Uri uri) {
-        if (Objects.equals(uri, artwork)) return;
-        artwork = uri;
-        cover.setImageResource(R.drawable.ic_station);
+    private void showArtwork(ImageView target, Uri uri) {
+        if (Objects.equals(uri, target.getTag())) return;
+        target.setTag(uri);
+        target.setImageResource(R.drawable.ic_station);
         if (uri == null) return;
+        Bitmap cached = artworkCache.get(uri);
+        if (cached != null) {
+            target.setImageBitmap(cached);
+            return;
+        }
+        List<ImageView> waiting = artworkRequests.computeIfAbsent(uri, ignored -> new ArrayList<>());
+        waiting.add(target);
+        if (waiting.size() > 1) return;
         network.execute(() -> {
+            Bitmap image = null;
             try {
                 HttpURLConnection connection = Catalog.connect(new URL(uri.toString()));
-                Bitmap image;
                 try (InputStream stream = connection.getInputStream()) {
                     image = BitmapFactory.decodeStream(stream);
                 } finally {
                     connection.disconnect();
                 }
-                ui.post(() -> {
-                    if (!isDestroyed() && uri.equals(artwork) && image != null) cover.setImageBitmap(image);
-                });
             } catch (Exception ignored) {
                 // The station icon is the fallback when cover art is unavailable.
             }
+            Bitmap result = image;
+            ui.post(() -> {
+                List<ImageView> targets = artworkRequests.remove(uri);
+                if (isDestroyed() || result == null) return;
+                artworkCache.put(uri, result);
+                for (ImageView view : targets) if (uri.equals(view.getTag())) view.setImageBitmap(result);
+            });
         });
     }
 
@@ -421,19 +441,13 @@ public final class PlayerActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setClipToPadding(false);
-        if (Build.VERSION.SDK_INT >= 30) {
-            getWindow().setDecorFitsSystemWindows(false);
-            scroll.setOnApplyWindowInsetsListener((view, window) -> {
-                Insets safe = window.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
-                return window;
-            });
-        }
+        applySafeInsets(getWindow(), scroll);
         Configuration config = getResources().getConfiguration();
         boolean wide = config.screenWidthDp >= 540 && config.screenHeightDp < 500;
+        boolean largeCover = !wide && config.screenHeightDp >= 620 && config.fontScale <= 1.3f;
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        body.setGravity(Gravity.CENTER_VERTICAL);
+        body.setGravity(wide ? Gravity.CENTER_VERTICAL : Gravity.TOP);
         body.setPadding(dp(14), dp(12), dp(14), dp(12));
         int width = wide ? ViewGroup.LayoutParams.MATCH_PARENT : config.screenWidthDp >= 600
                 ? dp(520) : ViewGroup.LayoutParams.MATCH_PARENT;
@@ -471,27 +485,48 @@ public final class PlayerActivity extends Activity {
 
         LinearLayout deck = new LinearLayout(this);
         deck.setOrientation(LinearLayout.VERTICAL);
+        deck.setGravity(Gravity.CENTER_VERTICAL);
         deck.setBackground(shape(SURFACE, 18, BORDER));
         deck.setPadding(dp(12), dp(12), dp(12), dp(8));
-        if (wide) body.addView(deck, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        else addWithTopMargin(body, deck, 10);
-
-        LinearLayout nowPlaying = new LinearLayout(this);
-        nowPlaying.setGravity(Gravity.CENTER_VERTICAL);
-        deck.addView(nowPlaying);
+        LinearLayout.LayoutParams deckSize = wide
+                ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1)
+                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
+        if (!wide) deckSize.topMargin = dp(10);
+        body.addView(deck, deckSize);
 
         cover = new ImageView(this);
         cover.setImageResource(R.drawable.ic_station);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         cover.setBackground(shape(RAISED, 12, BORDER));
         cover.setClipToOutline(true);
-        int coverSize = dp(config.screenHeightDp >= 650 ? 80 : 56);
-        LinearLayout.LayoutParams art = new LinearLayout.LayoutParams(coverSize, coverSize);
-        art.setMarginEnd(dp(10));
-        nowPlaying.addView(cover, art);
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
-        nowPlaying.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (largeCover) {
+            FrameLayout art = new FrameLayout(this);
+            art.setMinimumHeight(dp(132));
+            art.addView(cover, new FrameLayout.LayoutParams(0, 0, Gravity.CENTER));
+            art.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                int side = Math.min(right - left, bottom - top);
+                ViewGroup.LayoutParams size = cover.getLayoutParams();
+                if (side != size.width) {
+                    size.width = side;
+                    size.height = side;
+                    cover.setLayoutParams(size);
+                }
+            });
+            LinearLayout.LayoutParams artSize = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
+            artSize.bottomMargin = dp(12);
+            deck.addView(art, artSize);
+            deck.addView(details);
+        } else {
+            LinearLayout nowPlaying = new LinearLayout(this);
+            nowPlaying.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams artSize = new LinearLayout.LayoutParams(dp(56), dp(56));
+            artSize.setMarginEnd(dp(10));
+            nowPlaying.addView(cover, artSize);
+            nowPlaying.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            deck.addView(nowPlaying);
+        }
         LinearLayout state = new LinearLayout(this);
         state.setGravity(Gravity.CENTER_VERTICAL);
         statusDot = shape(0xff8c7e6e, 4, Color.TRANSPARENT);
@@ -564,6 +599,17 @@ public final class PlayerActivity extends Activity {
         return scroll;
     }
 
+    private void applySafeInsets(Window window, View content) {
+        if (Build.VERSION.SDK_INT < 30) return;
+        window.setDecorFitsSystemWindows(false);
+        content.setOnApplyWindowInsetsListener((view, insets) -> {
+            Insets safe = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
+                    | WindowInsets.Type.ime());
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            return insets;
+        });
+    }
+
     private Button soundtrackButton() {
         String title = "Sebas ist schuld.";
         String action = "Soundtrack starten";
@@ -585,28 +631,173 @@ public final class PlayerActivity extends Activity {
         return button;
     }
 
-    private AlertDialog buildLibraryDialog() {
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout library = new LinearLayout(this);
-        library.setOrientation(LinearLayout.VERTICAL);
-        library.setPadding(dp(20), 0, dp(20), dp(8));
-        scroll.addView(library);
-        albums = field("Alle Alben", this::chooseAlbum);
-        songs = field("Song auswählen", this::chooseSong);
-        retry = field("Mediathek aktualisieren", this::loadCatalog);
-        catalogStatus = label("", 12, MUTED, false);
-        newest = field("Neu in der Mediathek", () -> {
-            libraryDialog.dismiss();
+    private Dialog buildLibraryDialog() {
+        Dialog dialog = new Dialog(this, R.style.Theme_Schwafelpatie);
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(BACKGROUND);
+        screen.setFocusableInTouchMode(true);
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(16), dp(8), dp(16), dp(8));
+        header.addView(label("Mediathek", 26, INK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button close = field("Schließen", dialog::dismiss);
+        close.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, null, null);
+        header.addView(close);
+        screen.addView(header);
+
+        ListView list = new ListView(this);
+        list.setDivider(new ColorDrawable(BACKGROUND));
+        list.setDividerHeight(dp(4));
+        list.setItemsCanFocus(true);
+        list.setPadding(dp(14), 0, dp(14), dp(8));
+        LinearLayout filters = new LinearLayout(this);
+        filters.setOrientation(LinearLayout.VERTICAL);
+        filters.setPadding(0, 0, 0, dp(8));
+        resultCount = label("", 13, MUTED, true);
+        libraryAdapter = new LibraryAdapter();
+        newest = new SongRow(true);
+        newest.setOnClickListener(view -> {
+            dialog.dismiss();
             playLibrarySong(catalog.newest);
         });
-        newest.setSingleLine(false);
-        addField(library, "Alben", albums);
-        addField(library, "Song", songs);
-        addWithTopMargin(library, newest, 8);
-        library.addView(catalogStatus);
-        addWithTopMargin(library, retry, 8);
-        return new AlertDialog.Builder(this).setTitle("Mediathek").setView(scroll)
-                .setPositiveButton("Schließen", null).create();
+        filters.addView(newest);
+        albums = field("Alle Alben", this::chooseAlbum);
+        addWithTopMargin(filters, albums, 8);
+        SearchView search = new SearchView(this);
+        search.setIconifiedByDefault(false);
+        search.setQueryHint("Titel oder Album suchen");
+        search.setMaxWidth(Integer.MAX_VALUE);
+        search.setBackground(shape(SURFACE, 10, BORDER));
+        search.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override public boolean onQueryTextSubmit(String query) {
+                search.clearFocus();
+                return true;
+            }
+            @Override public boolean onQueryTextChange(String query) {
+                searchQuery = query.trim().toLowerCase(Locale.GERMAN);
+                libraryAdapter.filter();
+                return true;
+            }
+        });
+        LinearLayout.LayoutParams searchSize = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        searchSize.setMargins(dp(14), 0, dp(14), dp(8));
+        screen.addView(search, searchSize);
+        screen.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        retry = field("Mediathek aktualisieren", this::loadCatalog);
+        retry.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, null, null);
+        catalogStatus = label("", 12, MUTED, false);
+        filters.addView(catalogStatus);
+        addWithTopMargin(filters, retry, 8);
+        addWithTopMargin(filters, resultCount, 10);
+        list.addHeaderView(filters, null, false);
+        list.setAdapter(libraryAdapter);
+        list.setOnItemClickListener((parent, row, position, id) -> {
+            if (parent.getItemAtPosition(position) instanceof MediaItem song && player != null) {
+                dialog.dismiss();
+                playLibrarySong(song);
+            }
+        });
+        dialog.setContentView(screen);
+        Window window = dialog.getWindow();
+        applySafeInsets(window, screen);
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        screen.requestFocus();
+        return dialog;
+    }
+
+    private final class LibraryAdapter extends BaseAdapter {
+        private List<MediaItem> source = Collections.emptyList();
+        private List<MediaItem> results = Collections.emptyList();
+        private String currentId;
+        private boolean ready;
+
+        void update(List<MediaItem> visible, String current, boolean canPlay) {
+            if (source.equals(visible) && Objects.equals(currentId, current) && ready == canPlay) return;
+            source = visible;
+            currentId = current;
+            ready = canPlay;
+            filter();
+        }
+
+        void filter() {
+            results = new ArrayList<>();
+            for (MediaItem song : source) {
+                String text = song.mediaMetadata.title + " " + song.mediaMetadata.albumTitle;
+                if (text.toLowerCase(Locale.GERMAN).contains(searchQuery)) results.add(song);
+            }
+            resultCount.setText(results.isEmpty() && !searchQuery.isEmpty() ? "Keine passenden Songs"
+                    : searchQuery.isEmpty() ? results.size() + (results.size() == 1 ? " Song" : " Songs")
+                    : results.size() + " von " + source.size() + " Songs");
+            notifyDataSetChanged();
+        }
+
+        @Override public int getCount() { return results.size(); }
+        @Override public MediaItem getItem(int position) { return results.get(position); }
+        @Override public long getItemId(int position) { return position; }
+        @Override public boolean areAllItemsEnabled() { return false; }
+        @Override public boolean isEnabled(int position) { return ready; }
+
+        @Override public View getView(int position, View recycled, ViewGroup parent) {
+            SongRow row = recycled instanceof SongRow songRow ? songRow : new SongRow(false);
+            MediaItem song = getItem(position);
+            row.bind(song, song.mediaId.equals(currentId));
+            return row;
+        }
+    }
+
+    private final class SongRow extends LinearLayout {
+        private final boolean featured;
+        private final ImageView art;
+        private final TextView name, release;
+        private final ImageView indicator;
+
+        SongRow(boolean featured) {
+            super(PlayerActivity.this);
+            this.featured = featured;
+            setGravity(Gravity.CENTER_VERTICAL);
+            setPadding(dp(10), dp(8), dp(10), dp(8));
+            art = new ImageView(PlayerActivity.this);
+            art.setImageResource(R.drawable.ic_station);
+            art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            art.setBackground(shape(RAISED, 7, BORDER));
+            art.setClipToOutline(true);
+            int side = dp(featured ? 56 : 40);
+            LinearLayout.LayoutParams artSize = new LinearLayout.LayoutParams(side, side);
+            artSize.setMarginEnd(dp(10));
+            addView(art, artSize);
+            LinearLayout copy = new LinearLayout(PlayerActivity.this);
+            copy.setOrientation(VERTICAL);
+            if (featured) copy.addView(label("NEU IN DER MEDIATHEK", 11, ACCENT, true));
+            name = label("", featured ? 18 : 15, INK, true);
+            name.setMaxLines(2);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            copy.addView(name);
+            release = label("", 12, MUTED, false);
+            copy.addView(release);
+            addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            indicator = new ImageView(PlayerActivity.this);
+            indicator.setImageResource(R.drawable.ic_play);
+            indicator.setScaleType(ImageView.ScaleType.CENTER);
+            LinearLayout.LayoutParams iconSize = new LinearLayout.LayoutParams(dp(34), dp(34));
+            iconSize.setMarginStart(dp(6));
+            addView(indicator, iconSize);
+        }
+
+        void bind(MediaItem song, boolean current) {
+            showArtwork(art, song.mediaMetadata.artworkUri);
+            name.setText(song.mediaMetadata.title);
+            name.setTextColor(current ? ACCENT : INK);
+            release.setText(song.mediaMetadata.albumTitle);
+            setBackground(new RippleDrawable(ColorStateList.valueOf(0x28ffc46c),
+                    shape(featured ? 0xff49311e : current ? 0xff3b2a1d : SURFACE, 10,
+                            current ? ACCENT : featured ? 0xffaa753a : BORDER), null));
+            indicator.setBackground(featured ? shape(ACCENT, 17, Color.TRANSPARENT) : null);
+            indicator.setImageTintList(ColorStateList.valueOf(featured ? BACKGROUND : current ? ACCENT : MUTED));
+            setContentDescription((featured ? "Neu in der Mediathek. " : "") + song.mediaMetadata.title
+                    + ". " + song.mediaMetadata.albumTitle + (current ? ". Aktueller Titel" : ""));
+        }
     }
 
     private void seekTo(int value) {
@@ -673,12 +864,6 @@ public final class PlayerActivity extends Activity {
         parent.addView(child, size);
     }
 
-    private void addField(LinearLayout library, String name, Button field) {
-        TextView caption = label(name, 12, MUTED, true);
-        caption.setPadding(0, dp(8), 0, dp(4));
-        library.addView(caption);
-        library.addView(field);
-    }
 
     private GradientDrawable shape(int color, int radius, int stroke) {
         GradientDrawable shape = new GradientDrawable();
